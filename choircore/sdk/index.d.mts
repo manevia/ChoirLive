@@ -22,6 +22,7 @@ export declare class ChoirCoreClient {
   on(event: 'error', cb: (error: unknown) => void): () => void;
   connect(options: ChoirCoreJoinOptions): Promise<void>;
   cue(message: string): Promise<unknown>;
+  getNetworkStats(): Promise<{roundTripMs: number | null; jitterMs: number | null; packetsLost: number; packetsReceived: number}>;
   publish(track: MediaStreamTrack, section?: string): Promise<unknown>;
   close(): void;
 }
