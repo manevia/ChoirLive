@@ -4,11 +4,11 @@
 
 GitHub Actions job **browser-media** launches the real ChoirCore signaling/media server, a Vite development server, and three isolated headless Chromium tabs. It:
 
-1. Starts a fake microphone in a singer's browser.
-2. Publishes its Opus audio through mediasoup WebRTC transports.
-3. Joins another singer and a receive-only sound engineer.
-4. Verifies each receiver obtains a remote audio track.
-5. Checks the remote singer's inbound RTP packet counter is greater than zero.
+1. Starts three independent Chromium browser sessions: two singers and a receive-only engineer.
+2. Publishes simulated microphones from both singers over mediasoup WebRTC transports.
+3. Verifies Singer A receives Singer B and Singer B receives Singer A.
+4. Verifies the sound engineer receives two distinct remote audio tracks.
+5. Requires at least 30 incoming RTP packets at each singer and 60 at the sound engineer. GitHub Actions run 43750847480 passed with 52, 52, and 102 packets respectively.
 
 The development-only page `choir-live/app/media-test.html` is served by Vite during tests. It is **not part of the default production build**. This test is deliberately local loopback: it does **not** establish public WAN connectivity, audio fidelity, TURN fallback, synchronization, or latency.
 
