@@ -14,12 +14,12 @@ export type ChoirCoreJoinOptions = {
   section?: string;
 };
 export declare class ChoirCoreClient {
-  constructor(url: string);
-  on(event: 'track', cb: (event: ChoirCoreTrackInfo) => void): void;
-  on(event: 'trackClosed', cb: (event: ChoirCoreTrackClosed) => void): void;
-  on(event: 'cue', cb: (event: { message: string }) => void): void;
-  on(event: 'disconnected', cb: () => void): void;
-  on(event: 'error', cb: (error: unknown) => void): void;
+  constructor(url: string, options?: { timeoutMs?: number });
+  on(event: 'track', cb: (event: ChoirCoreTrackInfo) => void): () => void;
+  on(event: 'trackClosed', cb: (event: ChoirCoreTrackClosed) => void): () => void;
+  on(event: 'cue', cb: (event: { message: string }) => void): () => void;
+  on(event: 'disconnected', cb: () => void): () => void;
+  on(event: 'error', cb: (error: unknown) => void): () => void;
   connect(options: ChoirCoreJoinOptions): Promise<void>;
   cue(message: string): Promise<unknown>;
   publish(track: MediaStreamTrack, section?: string): Promise<unknown>;
