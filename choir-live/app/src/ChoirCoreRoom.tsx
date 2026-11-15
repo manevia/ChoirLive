@@ -1,19 +1,124 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChoirCoreClient } from '../../../choircore/sdk/index.mjs';
 import './ChoirRoom.css';
+
 type Remote = {producerId:string;name:string;section:string};
 const sections=['Soprano','Alto','Tenor','Bass','Other'];
+
 export default function ChoirCoreRoom(){
- const [name,setName]=useState('');const [room,setRoom]=useState('CHOIR-101');const [secret,setSecret]=useState('');const [role,setRole]=useState('singer');const [section,setSection]=useState('Soprano');const [status,setStatus]=useState('Disconnected');const [joined,setJoined]=useState(false);const [muted,setMuted]=useState(false);const [cue,setCue]=useState('');const [lastCue,setLastCue]=useState('');const [remotes,setRemotes]=useState<Remote[]>([]);const [network,setNetwork]=useState('Network measurements pending');
- const client=useRef<ChoirCoreClient|null>(null);const mic=useRef<MediaStream|null>(null);const audio=useRef<Map<string,HTMLAudioElement>>(new Map());
- const leave=()=>{client.current?.close();client.current=null;mic.current?.getTracks().forEach(t=>t.stop());mic.current=null;audio.current.forEach(a=>{a.pause();a.srcObject=null;a.remove()});audio.current.clear();setRemotes([]);setJoined(false);setStatus('Disconnected')};
- const join=async()=>{if(!name.trim()||!room.trim()||!secret)return setStatus('Enter name, room and access code');try{setStatus('Connecting to ChoirCore…');const c=new ChoirCoreClient(import.meta.env.VITE_CHOIRCORE_URL||'ws://localhost:8090');client.current=c;
- c.on('track',({track,producerId,name,section}: {track:MediaStreamTrack;producerId:string;name:string;section:string})=>{const a=document.createElement('audio');a.autoplay=true;a.srcObject=new MediaStream([track]);document.body.appendChild(a);audio.current.set(producerId,a);void a.play().catch(()=>setStatus('Click Enable playback to hear singers'));setRemotes(v=>[...v.filter(x=>x.producerId!==producerId),{producerId,name,section}])});
- c.on('error',(error:unknown)=>setStatus(`Audio connection issue: ${String(error)}`));
- c.on('trackClosed',({producerId}:{producerId:string})=>{const a=audio.current.get(producerId);a?.remove();audio.current.delete(producerId);setRemotes(v=>v.filter(x=>x.producerId!==producerId))});c.on('cue',({message}:{message:string})=>setLastCue(message));c.on('disconnected',()=>setStatus('Connection closed'));
- await c.connect({room,name,secret,role,section});mic.current=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});await c.publish(mic.current.getAudioTracks()[0],section);setJoined(true);setStatus('Connected — wear headphones');}catch(e){leave();setStatus(`Connection failed: ${String(e)}`)}};
- useEffect(()=>{if(!joined)return;let active=true;const measure=async()=>{try{const n=await client.current?.getNetworkStats();if(n&&active)setNetwork(`RTT: ${n.roundTripMs===null?'unavailable':n.roundTripMs+' ms'} · jitter: ${n.jitterMs===null?'unavailable':n.jitterMs+' ms'} · packets lost: ${n.packetsLost} / received: ${n.packetsReceived}`);}catch{if(active)setNetwork('Network measurements unavailable')}};void measure();const timer=setInterval(()=>void measure(),5000);return()=>{active=false;clearInterval(timer)}},[joined]);
- useEffect(()=>()=>leave(),[]);
- return <section className="choir-app"><div className="choir-shell"><div className="choir-top"><div><span className="choir-kicker">CHOIRCORE v0.2 · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · no LiveKit Cloud subscription</p></div><span className="choir-pill">{joined?'● CONNECTED':'○ OFFLINE'}</span></div>
- {!joined?<div className="choir-form"><label>Your name<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Room<input value={room} onChange={e=>setRoom(e.target.value)}/></label><label>Access code<input type="password" value={secret} onChange={e=>setSecret(e.target.value)}/></label><label>Role<select value={role} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label><label>Section<select value={section} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label><button onClick={()=>void join()}>Join ChoirCore room</button><p className="choir-hint">For remote microphone access use HTTPS for the website and WSS for ChoirCore. Headphones required.</p></div>:<div className="choir-panel"><h3>Connected singers ({remotes.length})</h3>{remotes.map(p=><p key={p.producerId}>{p.name} — {p.section}</p>)}<button onClick={()=>{mic.current?.getAudioTracks().forEach(t=>t.enabled=muted);setMuted(!muted)}}>{muted?'Unmute':'Mute'}</button><button onClick={()=>audio.current.forEach(a=>void a.play())}>Enable playback</button><button onClick={leave}>Leave room</button>{role==='conductor'&&<div><label>Conductor cue<input value={cue} onChange={e=>setCue(e.target.value)}/></label><button onClick={()=>void client.current?.cue(cue)}>Broadcast cue</button></div>}{lastCue&&<p role="status">Conductor: {lastCue}</p>}<p className="choir-hint" role="status">{network}</p><p className="choir-hint">RTT and jitter are network indicators, not guaranteed choir synchronization or end-to-end audio delay.</p></div>}<p role="status" className="choir-status">{status}</p></div></section>;
+ const [name,setName]=useState('');
+ const [room,setRoom]=useState('CHOIR-101');
+ const [secret,setSecret]=useState('');
+ const [role,setRole]=useState('singer');
+ const [section,setSection]=useState('Soprano');
+ const [status,setStatus]=useState('Disconnected');
+ const [joined,setJoined]=useState(false);
+ const [connecting,setConnecting]=useState(false);
+ const [muted,setMuted]=useState(false);
+ const [cue,setCue]=useState('');
+ const [lastCue,setLastCue]=useState('');
+ const [remotes,setRemotes]=useState<Remote[]>([]);
+ const [network,setNetwork]=useState('Network measurements pending');
+ const client=useRef<ChoirCoreClient|null>(null);
+ const mic=useRef<MediaStream|null>(null);
+ const audio=useRef<Map<string,HTMLAudioElement>>(new Map());
+ const attempt=useRef(0);
+ const mounted=useRef(true);
+
+ const clearAudio=()=>{
+  audio.current.forEach(element=>{element.pause();element.srcObject=null;element.remove();});
+  audio.current.clear();
+  setRemotes([]);
+ };
+ const disconnect=()=>{
+  // Invalidate asynchronous connects before tearing down.
+  attempt.current++;
+  client.current?.close();client.current=null;
+  mic.current?.getTracks().forEach(track=>track.stop());mic.current=null;
+  clearAudio();setJoined(false);setConnecting(false);setMuted(false);
+ };
+ const leave=()=>{disconnect();setStatus('Disconnected');};
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;disconnect();}},[]);
+
+ const join=async()=>{
+  if(!name.trim()||!room.trim()||!secret){setStatus('Enter name, room and access code');return;}
+  if(connecting||joined)return;
+  const id=++attempt.current;
+  setConnecting(true);setStatus('Connecting to ChoirCore…');
+  const c=new ChoirCoreClient(import.meta.env.VITE_CHOIRCORE_URL||'ws://localhost:8090');
+  client.current=c;
+  let stream:MediaStream|null=null;
+  try{
+   c.on('track',({track,producerId,name,section})=>{
+    if(id!==attempt.current||!mounted.current)return;
+    const existing=audio.current.get(producerId);
+    existing?.pause();existing?.remove();
+    const element=document.createElement('audio');
+    element.autoplay=true;element.srcObject=new MediaStream([track]);
+    document.body.appendChild(element);audio.current.set(producerId,element);
+    void element.play().catch(()=>setStatus('Click Enable playback to hear singers'));
+    setRemotes(current=>[...current.filter(x=>x.producerId!==producerId),{producerId,name,section}]);
+   });
+   c.on('trackClosed',({producerId})=>{
+    const element=audio.current.get(producerId);
+    element?.pause();element?.remove();audio.current.delete(producerId);
+    if(mounted.current)setRemotes(current=>current.filter(x=>x.producerId!==producerId));
+   });
+   c.on('cue',({message})=>{if(mounted.current)setLastCue(message);});
+   c.on('error',error=>{if(id===attempt.current&&mounted.current)setStatus('Audio connection issue: '+String(error));});
+   c.on('disconnected',()=>{
+    if(id!==attempt.current||!mounted.current)return;
+    disconnect();
+    setStatus('Connection lost. Select Rejoin room to reconnect.');
+   });
+   await c.connect({room,name,secret,role,section});
+   if(id!==attempt.current)throw new Error('Join canceled');
+   stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+   if(id!==attempt.current)throw new Error('Join canceled');
+   mic.current=stream;
+   await c.publish(stream.getAudioTracks()[0],section);
+   if(id!==attempt.current)throw new Error('Join canceled');
+   setJoined(true);setConnecting(false);setStatus('Connected — wear headphones');
+  }catch(error){
+   stream?.getTracks().forEach(track=>track.stop());
+   c.close();
+   if(id===attempt.current&&mounted.current){disconnect();setStatus('Connection failed: '+String(error));}
+  }
+ };
+ useEffect(()=>{
+  if(!joined)return;
+  let active=true;
+  const measure=async()=>{
+   try{
+    const result=await client.current?.getNetworkStats();
+    if(result&&active)setNetwork(`RTT: ${result.roundTripMs===null?'unavailable':result.roundTripMs+' ms'} · jitter: ${result.jitterMs===null?'unavailable':result.jitterMs+' ms'} · packets lost: ${result.packetsLost} / received: ${result.packetsReceived}`);
+   }catch{if(active)setNetwork('Network measurements unavailable');}
+  };
+  void measure();const timer=window.setInterval(()=>void measure(),5000);
+  return()=>{active=false;window.clearInterval(timer);};
+ },[joined]);
+
+ return <section className="choir-app"><div className="choir-shell">
+  <div className="choir-top"><div><span className="choir-kicker">CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
+  {!joined?<div className="choir-form">
+   <label>Your name<input value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
+   <label>Room<input value={room} disabled={connecting} onChange={e=>setRoom(e.target.value)}/></label>
+   <label>Access code<input type="password" value={secret} disabled={connecting} onChange={e=>setSecret(e.target.value)}/></label>
+   <label>Role<select value={role} disabled={connecting} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
+   <label>Section<select value={section} disabled={connecting} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label>
+   <div className="choir-actions"><button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Join / Rejoin room'}</button>{connecting&&<button onClick={leave}>Cancel connection</button>}</div>
+   <p className="choir-hint">Remote microphone access requires HTTPS for ChoirLive and WSS for ChoirCore. If a network disconnect occurs, use Rejoin room.</p>
+  </div>:<div className="choir-panel">
+   <h3>Connected singers ({remotes.length})</h3>
+   {remotes.map(participant=><p key={participant.producerId}>{participant.name} — {participant.section}</p>)}
+   <div className="choir-actions"><button onClick={()=>{mic.current?.getAudioTracks().forEach(t=>t.enabled=muted);setMuted(!muted);}}>{muted?'Unmute':'Mute'}</button>
+   <button onClick={()=>audio.current.forEach(element=>void element.play().catch(()=>setStatus('Browser blocked audio playback')))}>Enable playback</button>
+   <button onClick={leave}>Leave room</button></div>
+   {role==='conductor'&&<div><label>Conductor cue<input value={cue} maxLength={120} onChange={e=>setCue(e.target.value)}/></label><button disabled={!cue.trim()} onClick={()=>void client.current?.cue(cue).catch(error=>setStatus(String(error)))}>Broadcast cue</button></div>}
+   {lastCue&&<p role="status">Conductor: {lastCue}</p>}
+   <p className="choir-hint" role="status">{network}</p>
+   <p className="choir-hint">RTT and jitter are network indicators, not guaranteed choir synchronization or end-to-end audio latency.</p>
+  </div>}
+  <p role="status" className="choir-status">{status}</p>
+ </div></section>;
 }
