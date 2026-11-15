@@ -13,26 +13,48 @@ worker.on('died',()=>process.exit(1));
 const rooms = new Map();
 const mediaCodecs = [{kind:'audio',mimeType:'audio/opus',clockRate:48000,channels:2,parameters:{useinbandfec:1}}];
 const server = http.createServer((req,res)=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({service:'ChoirCore',status:'ok',rooms:rooms.size}));});
-const wss = new WebSocketServer({server,maxPayload:65536});
+// Limit abusive signaling traffic and idle sockets before allocating media resources.
+const MAX_CONNECTIONS = Number(process.env.MAX_CONNECTIONS || 100);
+const MAX_MESSAGES_PER_10S = Number(process.env.MAX_MESSAGES_PER_10S || 80);
+const MAX_PEERS_PER_ROOM = Number(process.env.MAX_PEERS_PER_ROOM || 32);
+const wss = new WebSocketServer({server,maxPayload:16384});
+const heartbeat = setInterval(() => {
+ for (const ws of wss.clients) {
+  if (ws.isAlive === false) { ws.terminate(); continue; }
+  ws.isAlive = false; ws.ping();
+ }
+}, 30000);
+heartbeat.unref();
 function reply(ws,id,data,error){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({id,...(error?{error:String(error)}:{data})}));}
 function notify(ws,event,data){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({event,data}));}
 function safeId(s){return typeof s==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(s)}
 async function getRoom(name){let room=rooms.get(name);if(!room){room={router:await worker.createRouter({mediaCodecs}),peers:new Set()};rooms.set(name,room);}return room;}
 function closePeer(peer){if(!peer.room)return;const r=peer.room;for(const prod of peer.producers.values()){for(const p of r.peers)if(p!==peer)notify(p.ws,'producerClosed',{producerId:prod.id});}for(const t of peer.transports.values())t.close();r.peers.delete(peer);if(r.peers.size===0){r.router.close();rooms.delete(peer.roomName);}peer.room=null;}
 wss.on('connection',ws=>{
+ if (wss.clients.size > MAX_CONNECTIONS) { ws.close(1013, 'Server busy'); return; }
+ ws.isAlive = true;
+ ws.on('pong', () => { ws.isAlive = true; });
+ let windowStart = Date.now(), messageCount = 0;
  const peer={ws,room:null,roomName:null,transports:new Map(),producers:new Map(),consumers:new Map()};
- ws.on('message',async raw=>{let msg;try{msg=JSON.parse(raw.toString());}catch{return;}const {id,action,data={}}=msg;try{
+ ws.on('message',async raw=>{
+  const now = Date.now();
+  if (now - windowStart >= 10000) { windowStart = now; messageCount = 0; }
+  if (++messageCount > MAX_MESSAGES_PER_10S) { ws.close(1008, 'Rate limit exceeded'); return; }
+  let msg;try{msg=JSON.parse(raw.toString());}catch{return;}const {id,action,data={}}=msg;try{
   if(action==='join'){
    if(peer.room)throw Error('Already joined');
    if(!safeId(data.room)||!safeId(data.name))throw Error('Invalid room or name');
    const role=data.role==='conductor'?'conductor':'singer';
    const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:singerCode);
    if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw Error('Unauthorized');
-   peer.roomName=data.room;peer.name=data.name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=await getRoom(data.room);peer.room.peers.add(peer);
+   const selectedRoom = await getRoom(data.room);
+   if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
+   peer.roomName=data.room;peer.name=data.name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
   }
   if(!peer.room)throw Error('Join first');
   if(action==='createTransport'){
+   if(peer.transports.size >= 4)throw Error('Transport limit reached');
    const t=await peer.room.router.createWebRtcTransport({listenInfos:[{protocol:'udp',ip:'0.0.0.0',announcedAddress},{protocol:'tcp',ip:'0.0.0.0',announcedAddress}],enableUdp:true,enableTcp:true,preferUdp:true,initialAvailableOutgoingBitrate:300000});
    peer.transports.set(t.id,t);reply(ws,id,{id:t.id,iceParameters:t.iceParameters,iceCandidates:t.iceCandidates,dtlsParameters:t.dtlsParameters});return;
   }
@@ -40,12 +62,14 @@ wss.on('connection',ws=>{
    const t=peer.transports.get(data.transportId);if(!t)throw Error('Unknown transport');await t.connect({dtlsParameters:data.dtlsParameters});reply(ws,id,{ok:true});return;
   }
   if(action==='produce'){
+   if(peer.producers.size >= 1)throw Error('Only one microphone track is allowed');
    const t=peer.transports.get(data.transportId);if(!t)throw Error('Unknown transport');if(data.kind!=='audio')throw Error('Audio only');
    const prod=await t.produce({kind:'audio',rtpParameters:data.rtpParameters,appData:{section:peer.section}});peer.producers.set(prod.id,prod);
    prod.on('transportclose',()=>peer.producers.delete(prod.id));reply(ws,id,{id:prod.id});
    for(const p of peer.room.peers)if(p!==peer)notify(p.ws,'newProducer',{producerId:prod.id,name:peer.name,section:prod.appData.section});return;
   }
   if(action==='consume'){
+   if(peer.consumers.size >= MAX_PEERS_PER_ROOM)throw Error('Consumer limit reached');
    const t=peer.transports.get(data.transportId);if(!t)throw Error('Unknown transport');
    if(!peer.room.router.canConsume({producerId:data.producerId,rtpCapabilities:data.rtpCapabilities}))throw Error('Cannot consume');
    const c=await t.consume({producerId:data.producerId,rtpCapabilities:data.rtpCapabilities,paused:true});peer.consumers.set(c.id,c);c.on('transportclose',()=>peer.consumers.delete(c.id));
