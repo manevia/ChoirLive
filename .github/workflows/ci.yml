@@ -52,3 +52,20 @@ jobs:
         run: docker build --tag choircore:ci ./choircore/server
       - name: Confirm image architecture and runtime command
         run: docker image inspect choircore:ci --format '{{.Os}}/{{.Architecture}} {{json .Config.Cmd}}'
+      - name: Start media container and verify health
+        shell: bash
+        run: |
+          docker run -d --name choircore-ci --network host \
+            -e PORT=18091 -e ANNOUNCED_IP=127.0.0.1 \
+            -e CHOIRCORE_SINGER_CODE=integration-singer-secret-123 \
+            -e CHOIRCORE_CONDUCTOR_CODE=integration-conductor-secret-456 \
+            choircore:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18091/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs choircore-ci
+          exit 1
+      - name: Stop media container
+        if: always()
+        run: docker rm -f choircore-ci || true
