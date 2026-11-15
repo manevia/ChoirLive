@@ -29,9 +29,17 @@ export class ChoirCoreClient {
     ws.addEventListener('close', () => { clearTimeout(timeout); reject(new Error('Signaling connection closed')); }, { once: true });
    });
    ws.addEventListener('close', () => {
+    if (this.closed) return; // Intentional leave must not trigger a reconnect alert.
     this.closed = true;
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Connection closed')); }
     this.pending.clear();
+    this.queuedProducers.clear();
+    this.subscriptions.clear();
+    for (const c of this.consumers.values()) c.close();
+    this.consumers.clear();
+    this.sendTransport?.close();
+    this.recvTransport?.close();
+    this.ws = null;
     this.emit('disconnected');
    });
    ws.addEventListener('message', event => {
@@ -138,6 +146,7 @@ export class ChoirCoreClient {
   for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Connection closed')); }
   this.pending.clear();
   this.queuedProducers.clear();
+  this.subscriptions.clear();
   for (const c of this.consumers.values()) c.close();
   this.consumers.clear();
   this.sendTransport?.close();
