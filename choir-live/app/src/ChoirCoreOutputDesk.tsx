@@ -82,17 +82,17 @@ export default function ChoirCoreOutputDesk(){
    setStatus('Recording the browser SATB master mix locally');
   }catch(error){setStatus('Could not start recording: '+String(error));}
  };
- const stop = () => {
+ const stop = (reason='Disconnected') => {
   finishRecording();
   client.current?.close();client.current=null;
   for(const id of [...sources.current.keys()])removeSource(id);
   if(output.current){output.current.pause();output.current.srcObject=null;}
   void context.current?.close();context.current=null;
   destination.current=null;main.current=null;limiter.current=null;buses.current.clear();
-  setConnected(false);setStatus('Disconnected');
+  setConnected(false);setStatus(reason);
  };
  useEffect(()=>{if(!recording)return;const interval=window.setInterval(()=>{if(recordingStarted.current!==null)setRecordedSeconds(Math.floor((Date.now()-recordingStarted.current)/1000))},1000);return()=>window.clearInterval(interval)},[recording]);
- useEffect(()=>()=>stop(),[]);
+ useEffect(()=>()=>{stop();},[]);
 
  const refreshDevices = async () => {
   try{
@@ -130,15 +130,16 @@ export default function ChoirCoreOutputDesk(){
     void output.current?.play().catch(()=>setStatus('Click Enable audio output to hear the choir'));
    });
    c.on('trackClosed',({producerId})=>removeSource(producerId));
-   c.on('disconnected',()=>setStatus('ChoirCore signaling disconnected'));
+   c.on('disconnected',()=>{if(client.current===c)stop('ChoirCore signaling lost. Reconnect the Sound Desk; any active local recording was finalized.');});
    c.on('error',error=>setStatus('Audio connection issue: '+String(error)));
    // The desk receives media but never publishes its microphone.
-   // Dedicated engineer authorization will be implemented before public launch.
+   // Engineer authorization uses a distinct receive-only shared code.
+   // Individual user identities are required before public launch.
    await c.connect({room,name,secret,role:'engineer',section:'Other'});
    setConnected(true);setStatus('Receiving choir audio — no microphone published');
    await refreshDevices();
    void audio.play().catch(()=>setStatus('Click Enable audio output to hear the choir'));
-  }catch(error){stop();setStatus('Output Desk connection failed: '+String(error));}
+  }catch(error){stop('Output Desk connection failed: '+String(error));}
  };
  const setLevel=(section:Section,value:number)=>{
   setLevels(old=>({...old,[section]:value}));
@@ -163,7 +164,7 @@ export default function ChoirCoreOutputDesk(){
     <button onClick={()=>void join()}>Connect output desk</button>
     <p className="choir-hint">This desk requires the dedicated sound-engineer access code. A server-side master mixer remains pending.</p>
    </div>:<div>
-    <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={stop}>Leave room</button></div>
+    <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={()=>stop()}>Leave room</button></div>
     <div className="choir-panel">
      <h3>Local rehearsal recording</h3>
      <label><input type="checkbox" checked={consentConfirmed} onChange={event=>setConsentConfirmed(event.target.checked)} disabled={recording}/> I confirm all participants have been informed and have agreed to this recording.</label>
