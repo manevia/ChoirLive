@@ -55,10 +55,10 @@ Use headphones on both devices and different Internet connections.
 5. Join a conductor, verify a conductor cue reaches singers, and verify a singer cannot send conductor-only messages.
 6. Restart the server and check safe reconnect/error handling.
 7. Connect the **Native ChoirCore Sound Desk** using the engineer access code; verify it receives remote tracks without publishing a microphone. Adjust Soprano/Alto/Tenor/Bass levels and the master level. Connect a dedicated USB output interface and test feedback suppression.
-8. Recordings and server-generated master mixes are not yet implemented in ChoirCore.
+8. Once every participant has agreed, the engineer can record the **browser-side** mixed audio from the native Sound Desk. Select **Start recording**, then **Stop and save recording** to download the local file. It does not upload to a server, is lost if the browser is interrupted before finalization, and does not include missing remote audio. A server-generated master mix and reliable server-side recording are not yet implemented.
 
 ## Known blockers before public launch
-- No independent ChoirCore master-mix or recording pipeline
+- No independent ChoirCore server-side master-mix or recording pipeline; local Sound Desk browser recording is an interim feature
 - No per-user accounts or database-backed authorization; role-specific shared secrets are for controlled testing only
 - No TURN relay/fallback validated across mobile networks
 - No measured music latency or 50+ singer load test
