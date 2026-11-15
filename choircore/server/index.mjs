@@ -13,6 +13,17 @@ const worker = await mediasoup.createWorker({rtcMinPort:40000,rtcMaxPort:40100,l
 worker.on('died',()=>process.exit(1));
 const rooms = new Map();
 const pendingRooms = new Map();
+// If a client closes before an asynchronous room join completes, allow other
+// concurrent admissions to finish before cleaning the orphaned empty router.
+const orphanCleanup = setInterval(() => {
+ for (const [name,room] of rooms) {
+  if (room.peers.size===0 && !pendingRooms.has(name)) {
+   room.router.close();
+   rooms.delete(name);
+  }
+ }
+}, 60000);
+orphanCleanup.unref();
 const mediaCodecs = [{kind:'audio',mimeType:'audio/opus',clockRate:48000,channels:2,parameters:{useinbandfec:1}}];
 const server = http.createServer((req,res)=>{
  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -95,18 +106,8 @@ wss.on('connection',ws=>{
    const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
    if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw Error('Unauthorized');
    const selectedRoom = await getRoom(data.room);
-   if (socketClosed || ws.readyState !== WebSocket.OPEN) {
-    if (selectedRoom.peers.size === 0 && rooms.get(data.room) === selectedRoom) {
-     selectedRoom.router.close(); rooms.delete(data.room);
-    }
-    throw Error('Connection closed');
-   }
-   if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) {
-    if (selectedRoom.peers.size === 0 && rooms.get(data.room) === selectedRoom) {
-     selectedRoom.router.close(); rooms.delete(data.room);
-    }
-    throw Error('Room at capacity');
-   }
+   if (socketClosed || ws.readyState !== WebSocket.OPEN) throw Error('Connection closed');
+   if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
    peer.roomName=data.room;peer.name=data.name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
    } finally { joining = false; }
