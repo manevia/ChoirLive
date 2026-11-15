@@ -54,25 +54,32 @@ try{
   await p.waitForFunction(()=>window.choirMediaTest?.ready,{timeout:20000});
  }
  const wsUrl=`ws://127.0.0.1:${serverPort}`;
+ // Join three browsers before publishing, to test newProducer subscription
+ // from both singers and ensure the receive-only desk hears both tracks.
  await Promise.all([
-  singer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SingerOne',secret:codeSinger,publish:true}),
+  singer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SingerOne',secret:codeSinger,publish:false}),
   receiver.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SingerTwo',secret:codeSinger,publish:false}),
+  engineer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SoundDesk',secret:codeEngineer,role:'engineer',publish:false})
  ]);
- await engineer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SoundDesk',secret:codeEngineer,role:'engineer',publish:false});
- await receiver.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000});
- await engineer.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000});
- // A media track alone is insufficient; verify inbound RTP packets arrive.
+ await Promise.all([
+  singer.evaluate(()=>window.choirMediaTest.publishMic()),
+  receiver.evaluate(()=>window.choirMediaTest.publishMic())
+ ]);
+ await Promise.all([
+  singer.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000}),
+  receiver.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000}),
+  engineer.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=2,{timeout:20000})
+ ]);
  const deadline=Date.now()+22000;
- let result;
+ let one, two, desk;
  while(Date.now()<deadline){
-  result=await receiver.evaluate(()=>window.choirMediaTest.stats());
-  if(result.packetsReceived>=30)break;
+  [one,two,desk]=await Promise.all(pages.map(page=>page.evaluate(()=>window.choirMediaTest.stats())));
+  if(one.packetsReceived>=30&&two.packetsReceived>=30&&desk.packetsReceived>=60)break;
   await sleep(500);
  }
- if(!result||result.packetsReceived<30)throw Error('Remote browser received track but no RTP packets: '+JSON.stringify(result));
- const soundDeskStats=await engineer.evaluate(()=>window.choirMediaTest.stats());
- if(soundDeskStats.packetsReceived<20)throw Error('Sound Desk did not receive sustained RTP packets: '+JSON.stringify(soundDeskStats));
- console.log('BROWSER AUDIO PASS: remote track, sound engineer track, received RTP packets:',result.packetsReceived);
+ if(!one||!two||!desk||one.packetsReceived<30||two.packetsReceived<30||desk.packetsReceived<60)
+  throw Error('Bidirectional RTP under threshold: '+JSON.stringify({one,two,desk}));
+ console.log('BIDIRECTIONAL AUDIO PASS: singer A=',one.packetsReceived,'singer B=',two.packetsReceived,'sound engineer=',desk.packetsReceived);
  for(const p of pages)await p.evaluate(()=>window.choirMediaTest.leave());
 }catch(error){console.error('BROWSER AUDIO FAILED:',error,logs);process.exitCode=1;}
 finally{
