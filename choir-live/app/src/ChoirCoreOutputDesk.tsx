@@ -91,7 +91,7 @@ export default function ChoirCoreOutputDesk(){
    c.on('error',error=>setStatus('Audio connection issue: '+String(error)));
    // The desk receives media but never publishes its microphone.
    // Dedicated engineer authorization will be implemented before public launch.
-   await c.connect({room,name,secret,role:'singer',section:'Other'});
+   await c.connect({room,name,secret,role:'engineer',section:'Other'});
    setConnected(true);setStatus('Receiving choir audio — no microphone published');
    await refreshDevices();
    void audio.play().catch(()=>setStatus('Click Enable audio output to hear the choir'));
@@ -118,7 +118,7 @@ export default function ChoirCoreOutputDesk(){
     <label>Choir room<input value={room} onChange={e=>setRoom(e.target.value)}/></label>
     <label>Room access code<input type="password" value={secret} onChange={e=>setSecret(e.target.value)} autoComplete="off"/></label>
     <button onClick={()=>void join()}>Connect output desk</button>
-    <p className="choir-hint">For controlled testing only: the desk currently uses the singer room code. Dedicated engineering permissions and a server-side master mixer are pending.</p>
+    <p className="choir-hint">This desk requires the dedicated sound-engineer access code. A server-side master mixer remains pending.</p>
    </div>:<div>
     <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={stop}>Leave room</button></div>
     <div className="choir-columns">
