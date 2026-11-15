@@ -62,14 +62,14 @@ try{
  await receiver.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000});
  await engineer.waitForFunction(()=>window.choirMediaTest.receivedTrackCount>=1,{timeout:20000});
  // A media track alone is insufficient; verify inbound RTP packets arrive.
- const deadline=Date.now()+18000;
+ const deadline=Date.now()+22000;
  let result;
  while(Date.now()<deadline){
   result=await receiver.evaluate(()=>window.choirMediaTest.stats());
-  if(result.packetsReceived>0)break;
+  if(result.packetsReceived>=30)break;
   await sleep(500);
  }
- if(!result||result.packetsReceived<=0)throw Error('Remote browser received track but no RTP packets: '+JSON.stringify(result));
+ if(!result||result.packetsReceived<30)throw Error('Remote browser received track but no RTP packets: '+JSON.stringify(result));
  console.log('BROWSER AUDIO PASS: remote track, sound engineer track, received RTP packets:',result.packetsReceived);
  for(const p of pages)await p.evaluate(()=>window.choirMediaTest.leave());
 }catch(error){console.error('BROWSER AUDIO FAILED:',error,logs);process.exitCode=1;}
