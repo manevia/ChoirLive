@@ -86,4 +86,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm install --no-save --package-lock=false playwright@1.57.0
       - run: npx playwright install --with-deps chromium
+      - name: Install ChoirCore media-server dependencies
+        working-directory: choircore/server
+        run: npm install --no-audit --no-fund
       - run: node test/browser-media.mjs
