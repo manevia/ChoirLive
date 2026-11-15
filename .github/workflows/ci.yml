@@ -30,8 +30,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --ignore-scripts
+      - run: npm install --no-audit --no-fund
       - run: npm run check
+      - run: npm test
       - run: node --check ../sdk/index.mjs
 
   python-tests:
