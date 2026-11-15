@@ -23,8 +23,9 @@ PORT=8090
 MAX_PEERS_PER_ROOM=12
 MAX_CONNECTIONS=100
 MAX_ROOMS=20
+MAX_AUTH_FAILURES=10
 ```
-Use separate credentials for each role: singer, conductor, and receive-only sound engineer. These are still role-shared passwords and are inadequate for untrusted public users.
+Use separate credentials for each role: singer, conductor, and receive-only sound engineer. When NODE_ENV=production, CHOIRCORE_ALLOWED_ORIGINS must be set or the service refuses to start. Invalid code attempts are limited per connecting IP (default 10 per minute), which can also affect singers behind a shared NAT address. These are still role-shared passwords and are inadequate for untrusted public users.
 
 ## 3. Deploy the server
 From the repository root:
