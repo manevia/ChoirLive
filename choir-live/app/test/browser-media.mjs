@@ -70,6 +70,8 @@ try{
   await sleep(500);
  }
  if(!result||result.packetsReceived<30)throw Error('Remote browser received track but no RTP packets: '+JSON.stringify(result));
+ const soundDeskStats=await engineer.evaluate(()=>window.choirMediaTest.stats());
+ if(soundDeskStats.packetsReceived<20)throw Error('Sound Desk did not receive sustained RTP packets: '+JSON.stringify(soundDeskStats));
  console.log('BROWSER AUDIO PASS: remote track, sound engineer track, received RTP packets:',result.packetsReceived);
  for(const p of pages)await p.evaluate(()=>window.choirMediaTest.leave());
 }catch(error){console.error('BROWSER AUDIO FAILED:',error,logs);process.exitCode=1;}
