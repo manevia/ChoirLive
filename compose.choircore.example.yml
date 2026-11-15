@@ -1,0 +1,17 @@
+# For a dedicated Linux VPS using Docker Compose/Coolify.
+# Host networking is required in this reference configuration so mediasoup's
+# advertised external IP matches accessible UDP media ports.
+# Do not deploy before setting distinct strong secrets and ANNOUNCED_IP.
+services:
+  choircore:
+    build:
+      context: ./choircore/server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PORT: "8090"
+      ANNOUNCED_IP: "${ANNOUNCED_IP:?Public media host IP required}"
+      CHOIRCORE_SINGER_CODE: "${CHOIRCORE_SINGER_CODE:?Singer code required}"
+      CHOIRCORE_CONDUCTOR_CODE: "${CHOIRCORE_CONDUCTOR_CODE:?Conductor code required}"
+      MAX_CONNECTIONS: "${MAX_CONNECTIONS:-100}"
+      MAX_PEERS_PER_ROOM: "${MAX_PEERS_PER_ROOM:-32}"
