@@ -17,12 +17,13 @@ Copy `choircore/server/.env.example` to a **private** deployment environment fil
 ANNOUNCED_IP=<YOUR_PUBLIC_IPV4>
 CHOIRCORE_SINGER_CODE=<LONG_RANDOM_SINGER_ACCESS_SECRET>
 CHOIRCORE_CONDUCTOR_CODE=<DIFFERENT_LONG_RANDOM_CONDUCTOR_SECRET>
+CHOIRCORE_ENGINEER_CODE=<THIRD_DIFFERENT_LONG_RANDOM_ENGINEER_SECRET>
 CHOIRCORE_ALLOWED_ORIGINS=https://choirlive.example.org
 PORT=8090
 MAX_PEERS_PER_ROOM=12
 MAX_CONNECTIONS=100
 ```
-Use separate credentials for each role. The current shared-code authentication is temporary and inadequate for untrusted public users.
+Use separate credentials for each role: singer, conductor, and receive-only sound engineer. These are still role-shared passwords and are inadequate for untrusted public users.
 
 ## 3. Deploy the server
 From the repository root:
@@ -53,11 +54,12 @@ Use headphones on both devices and different Internet connections.
 4. Check browser network measurements and note jitter/loss; capture actual one-way audio delay using a loopback/timestamp test if possible.
 5. Join a conductor, verify a conductor cue reaches singers, and verify a singer cannot send conductor-only messages.
 6. Restart the server and check safe reconnect/error handling.
-7. Before using a PA system, arrange a dedicated output interface, test levels and feedback suppression, and add your server-generated master mix and recordings (not yet part of ChoirCore).
+7. Connect the **Native ChoirCore Sound Desk** using the engineer access code; verify it receives remote tracks without publishing a microphone. Adjust Soprano/Alto/Tenor/Bass levels and the master level. Connect a dedicated USB output interface and test feedback suppression.
+8. Recordings and server-generated master mixes are not yet implemented in ChoirCore.
 
 ## Known blockers before public launch
 - No independent ChoirCore master-mix or recording pipeline
-- No per-user accounts or database-backed authorization
+- No per-user accounts or database-backed authorization; role-specific shared secrets are for controlled testing only
 - No TURN relay/fallback validated across mobile networks
 - No measured music latency or 50+ singer load test
 - Current default room limit 32 is a **configurable cap**, not a performance promise
