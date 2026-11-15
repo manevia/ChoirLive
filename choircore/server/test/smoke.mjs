@@ -18,6 +18,13 @@ let logs='';
 child.stdout.on('data', chunk => {logs += String(chunk);});
 child.stderr.on('data', chunk => {logs += String(chunk);});
 const peers=[];
+const watchdog = setTimeout(() => {
+ console.error('ChoirCore smoke test exceeded 25 seconds. Child output:\\n'+logs);
+ for(const ws of peers)ws.terminate();
+ child.kill('SIGKILL');
+ process.exit(1);
+}, 25000);
+watchdog.unref();
 function request(ws, id, action, data={}) {
  return new Promise((resolve,reject) => {
   const timeout = setTimeout(() => {ws.off('message', onMessage);reject(Error('Request timed out'));}, 3000);
@@ -71,4 +78,5 @@ try {
  for(const ws of peers)ws.terminate();
  child.kill('SIGTERM');
  await sleep(200);
+ clearTimeout(watchdog);
 }
