@@ -1,0 +1,18 @@
+# Internal-only recordings API. Publish only behind authenticated HTTPS reverse proxy.
+services:
+  recordings-api:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "recordings-server.mjs"]
+    volumes:
+      - ./recordings-server.mjs:/app/recordings-server.mjs:ro
+      - choir_recordings:/recordings:ro
+    environment:
+      RECORDINGS_PORT: 3003
+      CHOIR_RECORDINGS_DIR: /recordings
+      CHOIR_RECORDINGS_ACCESS_TOKEN: ${CHOIR_RECORDINGS_ACCESS_TOKEN:?Set a long random secret}
+    expose:
+      - "3003"
+    restart: unless-stopped
+volumes:
+  choir_recordings:

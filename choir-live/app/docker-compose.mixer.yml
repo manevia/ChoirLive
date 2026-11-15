@@ -1,0 +1,21 @@
+# Run alongside docker-compose.sfu.yml with:
+# docker compose -f docker-compose.sfu.yml -f docker-compose.mixer.yml up --build
+services:
+  mixer:
+    build: ./mixer
+    restart: unless-stopped
+    environment:
+      CHOIR_ROOM: ${CHOIR_ROOM:-CHOIR-101}
+      LIVEKIT_INTERNAL_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET}
+      CHOIR_RECORDINGS_DIR: /recordings
+      CHOIR_RECORDING_ENABLED: ${CHOIR_RECORDING_ENABLED:-false}
+      CHOIR_RECORDING_MAX_SECONDS: ${CHOIR_RECORDING_MAX_SECONDS:-3600}
+    depends_on:
+      - livekit
+
+    volumes:
+      - choir_recordings:/recordings
+volumes:
+  choir_recordings:

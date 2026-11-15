@@ -1,0 +1,24 @@
+services:
+  livekit:
+    image: livekit/livekit-server:v1.9
+    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - '7880:7880'
+      - '7881:7881'
+      - '50000-50100:50000-50100/udp'
+  token:
+    build: .
+    command: node sfu-token-server.mjs
+    environment:
+      TOKEN_PORT: '3002'
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_change_for_production}
+      LIVEKIT_PUBLIC_URL: ws://localhost:7880
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:5173}
+      CHOIR_ROOM_PASSPHRASE: ${CHOIR_ROOM_PASSPHRASE:-}
+      CHOIR_OUTPUT_PASSPHRASE: ${CHOIR_OUTPUT_PASSPHRASE:-}
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      - '3002:3002'

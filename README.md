@@ -1,11 +1,22 @@
 # ChoirLive + ChoirCore
 
-Independent real-time choir rehearsal application and reusable, self-hosted WebRTC media engine.
+This repository contains **ChoirLive** (the React/Vite rehearsal app) and **ChoirCore** (the independent mediasoup-based audio transport prototype and client SDK).
 
-**Status:** Development candidate; live audio and production deployment not yet validated.
+## Project layout
 
-- `choir-live/app/` — ChoirLive frontend and legacy audio services
-- `choircore/server/` — independent mediasoup signaling/media server
-- `choircore/sdk/` — browser client SDK
+- `choir-live/app/` — ChoirLive web app and legacy services.
+- `choircore/server/` — ChoirCore audio signaling + mediasoup SFU development server.
+- `choircore/sdk/` — ChoirCore browser client SDK.
+- `README_V02.md` — local testing and internet deployment notes.
 
-Never commit real credentials. Review deployment docs and `.env.example` files before hosting.
+## Development status
+
+**Not production ready.** Live multi-device operation, secure token-based identity, TURN handling, server-side ChoirCore mixing and recording, and load testing remain incomplete. Legacy LiveKit configuration remains in the project during migration.
+
+## Local start
+
+Read `README_V02.md`. Use Node.js 22+. Configure independent server secrets via `.env` files based on `.env.example` (never commit actual secrets). Start the ChoirCore server and the ChoirLive frontend separately.
+
+## Security notes
+
+Shared role codes are development-only. Do not launch this on the public internet without per-user auth, rate limiting, transport hardening and network tests. Historical LiveKit example configuration contains development credentials and must not be used in production.
