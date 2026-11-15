@@ -27,6 +27,10 @@ const server = http.createServer((req,res)=>{
 const MAX_CONNECTIONS = Number(process.env.MAX_CONNECTIONS || 100);
 const MAX_MESSAGES_PER_10S = Number(process.env.MAX_MESSAGES_PER_10S || 80);
 const MAX_PEERS_PER_ROOM = Number(process.env.MAX_PEERS_PER_ROOM || 32);
+const MAX_ROOMS = Number(process.env.MAX_ROOMS || 20);
+if (![port,MAX_CONNECTIONS,MAX_MESSAGES_PER_10S,MAX_PEERS_PER_ROOM,MAX_ROOMS].every(Number.isSafeInteger) ||
+    port < 1 || port > 65535 || MAX_CONNECTIONS < 1 || MAX_MESSAGES_PER_10S < 1 ||
+    MAX_PEERS_PER_ROOM < 1 || MAX_ROOMS < 1) throw new Error('Invalid ChoirCore server capacity configuration');
 const allowedOrigins = new Set((process.env.CHOIRCORE_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
 const wss = new WebSocketServer({
  server, maxPayload:16384,
@@ -50,6 +54,7 @@ async function getRoom(name) {
  const existing = rooms.get(name);
  if (existing) return existing;
  if (pendingRooms.has(name)) return pendingRooms.get(name);
+ if (rooms.size + pendingRooms.size >= MAX_ROOMS) throw Error('Room limit reached');
  const opening = worker.createRouter({mediaCodecs}).then(router => {
   const room = {router, peers:new Set()};
   rooms.set(name, room);
@@ -73,6 +78,8 @@ wss.on('connection',ws=>{
  ws.isAlive = true;
  ws.on('pong', () => { ws.isAlive = true; });
  let windowStart = Date.now(), messageCount = 0;
+ let joining = false;
+ let socketClosed = false;
  const peer={ws,room:null,roomName:null,transports:new Map(),producers:new Map(),consumers:new Map()};
  ws.on('message',async raw=>{
   const now = Date.now();
@@ -80,15 +87,29 @@ wss.on('connection',ws=>{
   if (++messageCount > MAX_MESSAGES_PER_10S) { ws.close(1008, 'Rate limit exceeded'); return; }
   let msg;try{msg=JSON.parse(raw.toString());}catch{return;}const {id,action,data={}}=msg;try{
   if(action==='join'){
-   if(peer.room)throw Error('Already joined');
+   if(peer.room || joining)throw Error('Already joining or joined');
+   joining = true;
+   try {
    if(!safeId(data.room)||!safeId(data.name))throw Error('Invalid room or name');
    const role=['singer','conductor','engineer'].includes(data.role)?data.role:'singer';
    const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
    if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw Error('Unauthorized');
    const selectedRoom = await getRoom(data.room);
-   if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
+   if (socketClosed || ws.readyState !== WebSocket.OPEN) {
+    if (selectedRoom.peers.size === 0 && rooms.get(data.room) === selectedRoom) {
+     selectedRoom.router.close(); rooms.delete(data.room);
+    }
+    throw Error('Connection closed');
+   }
+   if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) {
+    if (selectedRoom.peers.size === 0 && rooms.get(data.room) === selectedRoom) {
+     selectedRoom.router.close(); rooms.delete(data.room);
+    }
+    throw Error('Room at capacity');
+   }
    peer.roomName=data.room;peer.name=data.name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
+   } finally { joining = false; }
   }
   if(!peer.room)throw Error('Join first');
   if(action==='createTransport'){
@@ -119,6 +140,7 @@ wss.on('connection',ws=>{
   if(action==='leave'){closePeer(peer);reply(ws,id,{ok:true});return;}
   throw Error('Unknown action');
  }catch(e){reply(ws,id,null,e.message);}});
- ws.on('close',()=>closePeer(peer));ws.on('error',()=>closePeer(peer));
+ ws.on('close',()=>{socketClosed=true;closePeer(peer);});
+ ws.on('error',()=>{socketClosed=true;closePeer(peer);});
 });
 server.listen(port,'0.0.0.0',()=>console.log(`ChoirCore signaling listening on ${port}`));
