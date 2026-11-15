@@ -5,7 +5,8 @@ import * as mediasoup from 'mediasoup';
 const port = Number(process.env.PORT || 8090);
 const singerCode = process.env.CHOIRCORE_SINGER_CODE;
 const conductorCode = process.env.CHOIRCORE_CONDUCTOR_CODE;
-if (!singerCode || singerCode.length < 12 || !conductorCode || conductorCode.length < 12 || singerCode === conductorCode) throw new Error('Set distinct CHOIRCORE_SINGER_CODE and CHOIRCORE_CONDUCTOR_CODE (12+ chars)');
+const engineerCode = process.env.CHOIRCORE_ENGINEER_CODE;
+if (!singerCode || singerCode.length < 12 || !conductorCode || conductorCode.length < 12 || !engineerCode || engineerCode.length < 12 || new Set([singerCode,conductorCode,engineerCode]).size!==3) throw new Error('Set three distinct CHOIRCORE_SINGER_CODE, CHOIRCORE_CONDUCTOR_CODE and CHOIRCORE_ENGINEER_CODE secrets (12+ chars)');
 const announcedAddress = process.env.ANNOUNCED_IP;
 if (!announcedAddress) throw new Error('Set ANNOUNCED_IP to the public IP or reachable DNS name');
 const worker = await mediasoup.createWorker({rtcMinPort:40000,rtcMaxPort:40100,logLevel:'warn'});
@@ -81,8 +82,8 @@ wss.on('connection',ws=>{
   if(action==='join'){
    if(peer.room)throw Error('Already joined');
    if(!safeId(data.room)||!safeId(data.name))throw Error('Invalid room or name');
-   const role=data.role==='conductor'?'conductor':'singer';
-   const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:singerCode);
+   const role=['singer','conductor','engineer'].includes(data.role)?data.role:'singer';
+   const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
    if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw Error('Unauthorized');
    const selectedRoom = await getRoom(data.room);
    if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
@@ -99,6 +100,7 @@ wss.on('connection',ws=>{
    const t=peer.transports.get(data.transportId);if(!t)throw Error('Unknown transport');await t.connect({dtlsParameters:data.dtlsParameters});reply(ws,id,{ok:true});return;
   }
   if(action==='produce'){
+   if(peer.role==='engineer')throw Error('Engineers are receive-only');
    if(peer.producers.size >= 1)throw Error('Only one microphone track is allowed');
    const t=peer.transports.get(data.transportId);if(!t)throw Error('Unknown transport');if(data.kind!=='audio')throw Error('Audio only');
    const prod=await t.produce({kind:'audio',rtpParameters:data.rtpParameters,appData:{section:peer.section}});peer.producers.set(prod.id,prod);
