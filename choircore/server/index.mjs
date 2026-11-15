@@ -11,13 +11,30 @@ if (!announcedAddress) throw new Error('Set ANNOUNCED_IP to the public IP or rea
 const worker = await mediasoup.createWorker({rtcMinPort:40000,rtcMaxPort:40100,logLevel:'warn'});
 worker.on('died',()=>process.exit(1));
 const rooms = new Map();
+const pendingRooms = new Map();
 const mediaCodecs = [{kind:'audio',mimeType:'audio/opus',clockRate:48000,channels:2,parameters:{useinbandfec:1}}];
-const server = http.createServer((req,res)=>{res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({service:'ChoirCore',status:'ok',rooms:rooms.size}));});
+const server = http.createServer((req,res)=>{
+ const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+ if (req.method === 'GET' && (pathname === '/health' || pathname === '/ready')) {
+  res.writeHead(200, {'content-type':'application/json','cache-control':'no-store'});
+  res.end(JSON.stringify({service:'ChoirCore',status:'ok'}));return;
+ }
+ res.writeHead(404, {'content-type':'application/json','cache-control':'no-store'});
+ res.end(JSON.stringify({error:'Not found'}));
+});
 // Limit abusive signaling traffic and idle sockets before allocating media resources.
 const MAX_CONNECTIONS = Number(process.env.MAX_CONNECTIONS || 100);
 const MAX_MESSAGES_PER_10S = Number(process.env.MAX_MESSAGES_PER_10S || 80);
 const MAX_PEERS_PER_ROOM = Number(process.env.MAX_PEERS_PER_ROOM || 32);
-const wss = new WebSocketServer({server,maxPayload:16384});
+const allowedOrigins = new Set((process.env.CHOIRCORE_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
+const wss = new WebSocketServer({
+ server, maxPayload:16384,
+ verifyClient: ({origin}, cb) => {
+  // Browser Origin restrictions supplement authentication, not replace it.
+  if (!allowedOrigins.size || (origin && allowedOrigins.has(origin))) cb(true);
+  else cb(false, 403, 'Origin not allowed');
+ }
+});
 const heartbeat = setInterval(() => {
  for (const ws of wss.clients) {
   if (ws.isAlive === false) { ws.terminate(); continue; }
@@ -28,8 +45,28 @@ heartbeat.unref();
 function reply(ws,id,data,error){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({id,...(error?{error:String(error)}:{data})}));}
 function notify(ws,event,data){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({event,data}));}
 function safeId(s){return typeof s==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(s)}
-async function getRoom(name){let room=rooms.get(name);if(!room){room={router:await worker.createRouter({mediaCodecs}),peers:new Set()};rooms.set(name,room);}return room;}
-function closePeer(peer){if(!peer.room)return;const r=peer.room;for(const prod of peer.producers.values()){for(const p of r.peers)if(p!==peer)notify(p.ws,'producerClosed',{producerId:prod.id});}for(const t of peer.transports.values())t.close();r.peers.delete(peer);if(r.peers.size===0){r.router.close();rooms.delete(peer.roomName);}peer.room=null;}
+async function getRoom(name) {
+ const existing = rooms.get(name);
+ if (existing) return existing;
+ if (pendingRooms.has(name)) return pendingRooms.get(name);
+ const opening = worker.createRouter({mediaCodecs}).then(router => {
+  const room = {router, peers:new Set()};
+  rooms.set(name, room);
+  return room;
+ }).finally(() => pendingRooms.delete(name));
+ pendingRooms.set(name, opening);
+ return opening;
+}
+function closePeer(peer){
+ if(!peer.room)return;
+ const r=peer.room;
+ for(const prod of peer.producers.values())for(const p of r.peers)if(p!==peer)notify(p.ws,'producerClosed',{producerId:prod.id});
+ for(const t of peer.transports.values())t.close();
+ peer.transports.clear();peer.producers.clear();peer.consumers.clear();
+ r.peers.delete(peer);
+ if(r.peers.size===0){r.router.close();if(rooms.get(peer.roomName)===r)rooms.delete(peer.roomName);}
+ peer.room=null;peer.roomName=null;
+}
 wss.on('connection',ws=>{
  if (wss.clients.size > MAX_CONNECTIONS) { ws.close(1013, 'Server busy'); return; }
  ws.isAlive = true;
