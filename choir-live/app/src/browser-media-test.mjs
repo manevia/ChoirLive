@@ -27,6 +27,13 @@ window.choirMediaTest = {
     }
     return true;
   },
+  async publishMic() {
+    if (producer) throw new Error('Microphone already published');
+    microphone = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    producer = await client.publish(microphone.getAudioTracks()[0], 'Alto');
+    log.push({event:'published',id:producer.id});
+    return producer.id;
+  },
   async stats() { return client.getNetworkStats(); },
   async leave() {
     producer?.close();
