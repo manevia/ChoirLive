@@ -71,3 +71,19 @@ jobs:
       - name: Stop media container
         if: always()
         run: docker rm -f choircore-ci || true
+
+  browser-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: choir-live/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --package-lock=false playwright@1.57.0
+      - run: npx playwright install --with-deps chromium
+      - run: node test/browser-media.mjs
