@@ -108,3 +108,24 @@ jobs:
           CHOIRCORE_ALLOWED_ORIGINS: https://choir.example.test
           CHOIRCORE_SIGNALING_URL: wss://signal.example.test
         run: node scripts/choircore-preflight.mjs
+
+  frontend-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production frontend container
+        run: docker build -f Dockerfile.choirlive --build-arg VITE_CHOIRCORE_URL=wss://signal.example.test -t choir-live:ci .
+      - name: Verify web container and static assets
+        shell: bash
+        run: |
+          docker run -d --name choir-live-ci -p 127.0.0.1:18080:80 choir-live:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18080/health
+          curl -fsS http://127.0.0.1:18080/ | grep -q '<div id="root"></div>'
+      - name: Clean up
+        if: always()
+        run: docker rm -f choir-live-ci || true
