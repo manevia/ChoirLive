@@ -43,6 +43,33 @@ if (![port,MAX_CONNECTIONS,MAX_MESSAGES_PER_10S,MAX_PEERS_PER_ROOM,MAX_ROOMS].ev
     port < 1 || port > 65535 || MAX_CONNECTIONS < 1 || MAX_MESSAGES_PER_10S < 1 ||
     MAX_PEERS_PER_ROOM < 1 || MAX_ROOMS < 1) throw new Error('Invalid ChoirCore server capacity configuration');
 const allowedOrigins = new Set((process.env.CHOIRCORE_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
+if (process.env.NODE_ENV === 'production' && allowedOrigins.size === 0) {
+ throw new Error('CHOIRCORE_ALLOWED_ORIGINS must be configured in production');
+}
+// Rate limits are based on the actual TCP peer, not an untrusted forwarded header.
+const MAX_AUTH_FAILURES = Number(process.env.MAX_AUTH_FAILURES || 10);
+const AUTH_WINDOW_MS = 60000;
+if (!Number.isSafeInteger(MAX_AUTH_FAILURES) || MAX_AUTH_FAILURES < 1) throw new Error('Invalid MAX_AUTH_FAILURES');
+const authFailures = new Map();
+const authSweep = setInterval(() => {
+ const now = Date.now();
+ for (const [address,record] of authFailures) if (now - record.start >= AUTH_WINDOW_MS) authFailures.delete(address);
+},AUTH_WINDOW_MS);
+authSweep.unref();
+function failedAuth(ip) {
+ const now=Date.now();
+ let record=authFailures.get(ip);
+ if (!record || now - record.start >= AUTH_WINDOW_MS) record={start:now,count:0};
+ record.count++;
+ authFailures.set(ip,record);
+ return record.count >= MAX_AUTH_FAILURES;
+}
+function authBlocked(ip) {
+ const record=authFailures.get(ip);
+ if (!record) return false;
+ if (Date.now()-record.start >= AUTH_WINDOW_MS) { authFailures.delete(ip); return false; }
+ return record.count >= MAX_AUTH_FAILURES;
+}
 const wss = new WebSocketServer({
  server, maxPayload:16384,
  verifyClient: ({origin}, cb) => {
@@ -91,6 +118,7 @@ wss.on('connection',ws=>{
  let windowStart = Date.now(), messageCount = 0;
  let joining = false;
  let socketClosed = false;
+ const remoteAddress = ws._socket?.remoteAddress || 'unknown';
  const peer={ws,room:null,roomName:null,transports:new Map(),producers:new Map(),consumers:new Map()};
  ws.on('message',async raw=>{
   const now = Date.now();
@@ -101,10 +129,14 @@ wss.on('connection',ws=>{
    if(peer.room || joining)throw Error('Already joining or joined');
    joining = true;
    try {
+   if(authBlocked(remoteAddress)) throw Error('Too many failed access-code attempts. Try again later');
    if(!safeId(data.room)||!safeId(data.name))throw Error('Invalid room or name');
    const role=['singer','conductor','engineer'].includes(data.role)?data.role:'singer';
    const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
-   if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw Error('Unauthorized');
+   if(a.length!==b.length||!crypto.timingSafeEqual(a,b)) {
+    failedAuth(remoteAddress);
+    throw Error('Unauthorized');
+   }
    const selectedRoom = await getRoom(data.room);
    if (socketClosed || ws.readyState !== WebSocket.OPEN) throw Error('Connection closed');
    if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
