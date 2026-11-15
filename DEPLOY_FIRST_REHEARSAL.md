@@ -22,6 +22,7 @@ CHOIRCORE_ALLOWED_ORIGINS=https://choirlive.example.org
 PORT=8090
 MAX_PEERS_PER_ROOM=12
 MAX_CONNECTIONS=100
+MAX_ROOMS=20
 ```
 Use separate credentials for each role: singer, conductor, and receive-only sound engineer. These are still role-shared passwords and are inadequate for untrusted public users.
 
@@ -62,7 +63,7 @@ Use headphones on both devices and different Internet connections.
 - No per-user accounts or database-backed authorization; role-specific shared secrets are for controlled testing only
 - No TURN relay/fallback validated across mobile networks
 - No measured music latency or 50+ singer load test
-- Current default room limit 32 is a **configurable cap**, not a performance promise
+- The server defaults to 32 peers per room and 20 rooms, both **configurable caps**, not performance guarantees. The example deployment limits each room to 12 until capacity testing is complete.
 
 ## Troubleshooting
 - `WebSocket failed`: inspect DNS, TLS certificate, reverse proxy upgrade and origin allowlist.
