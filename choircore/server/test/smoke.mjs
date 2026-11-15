@@ -74,9 +74,14 @@ try {
  const cue=await request(b,6,'cue',{message:'Bar 12'});
  assert.equal(cue.data.ok,true);
  console.log('ChoirCore smoke test passed: health, origin, roles, room capacity, cues');
+} catch (error) {
+ console.error('Smoke test failed:', error, '\\nChoirCore output:\\n'+logs);
+ process.exitCode = 1;
 } finally {
  for(const ws of peers)ws.terminate();
  child.kill('SIGTERM');
  await sleep(200);
  clearTimeout(watchdog);
+ // mediasoup worker descendants may retain handles after signaling process exit.
+ process.exit(process.exitCode || 0);
 }
