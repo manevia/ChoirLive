@@ -127,13 +127,14 @@ export default function ChoirCoreOutputDesk(){
       <label>Master volume {master}%<input type="range" min="0" max="100" value={master} onChange={e=>setMasterLevel(Number(e.target.value))}/></label>
      </div>
      <div className="choir-panel"><h3>Master output</h3>
-      <audio className="choir-audio" ref={output} controls autoPlay/>
+      
       <label>Output device<select value={selectedDevice} onChange={e=>void selectDevice(e.target.value)}><option value="">Default system output</option>{devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}</select></label>
       <p className="choir-hint">Connect the receiving computer to your USB audio interface, then feed the interface output into a mixer. Keep room microphones away from PA speakers to prevent feedback.</p>
       <p className="choir-hint">This is a browser-side mix of remotely received voices, not a server-generated master recording.</p>
      </div>
     </div>
    </div>}
+   <audio className="choir-audio" ref={output} controls autoPlay style={{display: connected ? "block" : "none"}}/>
    <p className="choir-status" role="status">{status}</p>
   </div>
  </section>;
