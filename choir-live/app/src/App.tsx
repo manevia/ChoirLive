@@ -1,5 +1,6 @@
 import ChoirRoom from './ChoirRoom'
 import ChoirCoreRoom from './ChoirCoreRoom'
+import ChoirCoreOutputDesk from './ChoirCoreOutputDesk'
 import SfuChoirRoom from './SfuChoirRoom'
 import OutputDesk from './OutputDesk'
 import { useEffect, useRef, useState } from 'react'
@@ -61,6 +62,7 @@ function App() {
         <div className="relative z-10">
           <HeroSection />
           <ChoirCoreRoom />
+          <ChoirCoreOutputDesk />
           <SfuChoirRoom />
           <OutputDesk />
           <ChoirRoom />
