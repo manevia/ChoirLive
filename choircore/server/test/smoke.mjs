@@ -7,10 +7,12 @@ const port = 18090;
 const origin = 'https://choirlive.example.test';
 const codeSinger = 'test-singer-code-12345';
 const codeConductor = 'test-conductor-code-12345';
+const codeEngineer = 'test-engineer-code-12345';
 const child = spawn(process.execPath, ['index.mjs'], {
  cwd: new URL('..', import.meta.url),
  env: {...process.env, PORT:String(port), ANNOUNCED_IP:'127.0.0.1',
   CHOIRCORE_SINGER_CODE:codeSinger, CHOIRCORE_CONDUCTOR_CODE:codeConductor,
+  CHOIRCORE_ENGINEER_CODE:codeEngineer,
   CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2'},
  stdio:['ignore','pipe','pipe']
 });
@@ -71,6 +73,11 @@ try {
  const c=await connect(origin);
  const overflow=await request(c,5,'join',{room:'TEST',name:'SingerC',secret:codeSinger});
  assert.match(overflow.error,/capacity/);
+ const engineer=await connect(origin);
+ const engineerResult=await request(engineer,7,'join',{room:'ENGINEER',name:'Mixer',secret:codeEngineer,role:'engineer'});
+ assert.ok(engineerResult.data.routerRtpCapabilities);
+ const cannotPublish=await request(engineer,8,'produce',{kind:'audio'});
+ assert.match(cannotPublish.error,/receive-only/);
  const cue=await request(b,6,'cue',{message:'Bar 12'});
  assert.equal(cue.data.ok,true);
  console.log('ChoirCore smoke test passed: health, origin, roles, room capacity, cues');
