@@ -17,8 +17,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: choir-live/app/package-lock.json
-      # Temporary until package-lock.json is regenerated to match package.json.
-      - run: npm install --package-lock=false --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
 
   media-server:
