@@ -97,6 +97,23 @@ export class ChoirCoreClient {
    void this.subscribe(p).catch(error => this.emit('error', error));
   }
  }
+ async getNetworkStats() {
+  // These are transport-level estimates, not one-way musical audio latency.
+  const stats = await Promise.all([this.sendTransport?.getStats(), this.recvTransport?.getStats()]);
+  let roundTripMs = null, jitterMs = null, packetsLost = 0, packetsReceived = 0;
+  for (const report of stats) {
+   if (!report) continue;
+   for (const value of report.values()) {
+    if (value.type === 'candidate-pair' && value.state === 'succeeded' && typeof value.currentRoundTripTime === 'number') roundTripMs = Math.round(value.currentRoundTripTime * 1000);
+    if (value.type === 'inbound-rtp' && (value.kind === 'audio' || value.mediaType === 'audio')) {
+     packetsLost += value.packetsLost || 0;
+     packetsReceived += value.packetsReceived || 0;
+     if (typeof value.jitter === 'number') jitterMs = Math.round(value.jitter * 1000);
+    }
+   }
+  }
+  return {roundTripMs, jitterMs, packetsLost, packetsReceived};
+ }
  async cue(message) { return this.call('cue', {message}); }
  async publish(track, section = 'Other') {
   if (!this.sendTransport) throw new Error('Not ready to publish audio');
