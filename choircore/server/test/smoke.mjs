@@ -13,7 +13,7 @@ const child = spawn(process.execPath, ['index.mjs'], {
  env: {...process.env, PORT:String(port), ANNOUNCED_IP:'127.0.0.1',
   CHOIRCORE_SINGER_CODE:codeSinger, CHOIRCORE_CONDUCTOR_CODE:codeConductor,
   CHOIRCORE_ENGINEER_CODE:codeEngineer,
-  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2'},
+  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3'},
  stdio:['ignore','pipe','pipe']
 });
 let logs='';
@@ -78,6 +78,26 @@ try {
  assert.ok(engineerResult.data.routerRtpCapabilities);
  const cannotPublish=await request(engineer,8,'produce',{kind:'audio'});
  assert.match(cannotPublish.error,/receive-only/);
+ // Concurrent joins on one socket may never create two room memberships.
+ const racer=await connect(origin);
+ const [firstJoin,secondJoin]=await Promise.all([
+  request(racer,10,'join',{room:'RACE',name:'Concurrent',secret:codeSinger}),
+  request(racer,11,'join',{room:'RACE',name:'Concurrent',secret:codeSinger})
+ ]);
+ const successes=[firstJoin,secondJoin].filter(x=>Boolean(x.data));
+ const rejections=[firstJoin,secondJoin].filter(x=>Boolean(x.error));
+ assert.equal(successes.length,1,'Exactly one concurrent join should succeed');
+ assert.equal(rejections.length,1,'Second concurrent join should fail');
+ assert.match(rejections[0].error,/Already joining or joined/);
+ const racerLeave=await request(racer,12,'leave');
+ assert.equal(racerLeave.data.ok,true);
+ // Reject a new room once the bounded room allocation is exhausted.
+ const newRoomPeer=await connect(origin);
+ const extraRoom=await request(newRoomPeer,13,'join',{room:'EXTRA',name:'Extra',secret:codeSinger});
+ assert.ok(extraRoom.data.routerRtpCapabilities);
+ const beyond=await connect(origin);
+ const tooMany=await request(beyond,14,'join',{room:'TOO_MANY',name:'TooMany',secret:codeSinger});
+ assert.match(tooMany.error,/Room limit reached/);
  const cue=await request(b,6,'cue',{message:'Bar 12'});
  assert.equal(cue.data.ok,true);
  console.log('ChoirCore smoke test passed: health, origin, roles, room capacity, cues');
