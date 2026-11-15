@@ -69,3 +69,9 @@ Use headphones on both devices and different Internet connections.
 - `Connected but no audio`: check announced public IPv4, both firewalls, UDP media range, browser mic permission, headphones and ICE connection statistics.
 - `Room at capacity`: lower participant load or benchmark before raising the configured limit.
 - `Cannot hear remote audio`: browser autoplay restrictions may require user interaction to enable playback.
+
+## Interrupted-session recovery
+- ChoirCore now closes stale media transports when signaling unexpectedly disconnects.
+- On a singer's device, the rehearsal screen releases its microphone and remote playback tracks, displays a connection-lost message, and offers **Join / Rejoin room**. Reconnecting is a deliberate user action, not an automatic retry that might capture audio without awareness.
+- On the sound engineer's device, a signaling failure closes the active local receiving session and stops any browser recording. The browser attempts to download the recorded material captured so far. Verify the download before closing the tab.
+- These safeguards require live browser and network-interruption testing; passing the CI checks does not guarantee recording recovery after browser crashes or device power loss.
