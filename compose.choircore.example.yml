@@ -13,5 +13,7 @@ services:
       ANNOUNCED_IP: "${ANNOUNCED_IP:?Public media host IP required}"
       CHOIRCORE_SINGER_CODE: "${CHOIRCORE_SINGER_CODE:?Singer code required}"
       CHOIRCORE_CONDUCTOR_CODE: "${CHOIRCORE_CONDUCTOR_CODE:?Conductor code required}"
+      CHOIRCORE_ENGINEER_CODE: "${CHOIRCORE_ENGINEER_CODE:?Engineer code required}"
+      CHOIRCORE_ALLOWED_ORIGINS: "${CHOIRCORE_ALLOWED_ORIGINS:?Allowed browser origins required}"
       MAX_CONNECTIONS: "${MAX_CONNECTIONS:-100}"
       MAX_PEERS_PER_ROOM: "${MAX_PEERS_PER_ROOM:-32}"
