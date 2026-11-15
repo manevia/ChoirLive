@@ -68,12 +68,15 @@ export class ChoirCoreClient {
    const joined = await this.call('join', {room, name, secret, role, section});
    this.device = new Device();
    await this.device.load({routerRtpCapabilities: joined.routerRtpCapabilities});
-   const send = await this.call('createTransport');
-   this.sendTransport = this.device.createSendTransport(send);
-   this.sendTransport.on('connect', ({dtlsParameters}, ok, fail) =>
-    this.call('connectTransport', {transportId: send.id, dtlsParameters}).then(ok, fail));
-   this.sendTransport.on('produce', ({kind, rtpParameters}, ok, fail) =>
-    this.call('produce', {transportId: send.id, kind, rtpParameters}).then(ok, fail));
+   // Receive-only sound engineers do not need (or get) an outgoing RTP transport.
+   if (role !== 'engineer') {
+    const send = await this.call('createTransport');
+    this.sendTransport = this.device.createSendTransport(send);
+    this.sendTransport.on('connect', ({dtlsParameters}, ok, fail) =>
+     this.call('connectTransport', {transportId: send.id, dtlsParameters}).then(ok, fail));
+    this.sendTransport.on('produce', ({kind, rtpParameters}, ok, fail) =>
+     this.call('produce', {transportId: send.id, kind, rtpParameters}).then(ok, fail));
+   }
    const recv = await this.call('createTransport');
    this.recvTransport = this.device.createRecvTransport(recv);
    this.recvTransport.on('connect', ({dtlsParameters}, ok, fail) =>
