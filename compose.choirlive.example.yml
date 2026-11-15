@@ -1,0 +1,21 @@
+# Static web UI only. The independent ChoirCore media server uses separate
+# compose.choircore.example.yml and requires host networking/UDP support.
+# Run from repository root with real build-time signaling URL.
+services:
+  choir-live:
+    build:
+      context: .
+      dockerfile: Dockerfile.choirlive
+      args:
+        VITE_CHOIRCORE_URL: "${VITE_CHOIRCORE_URL:?Set public secure WebSocket URL}"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+# Map HTTPS domain through reverse proxy to port 18080 on the host.
+# Port 18080 binds loopback for security; some Coolify proxy setups require
+# private Docker network routing rather than loopback publishing.
