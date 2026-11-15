@@ -43,3 +43,12 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m compileall -q choir-live/app
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ChoirCore deployment image
+        run: docker build --tag choircore:ci ./choircore/server
+      - name: Confirm image architecture and runtime command
+        run: docker image inspect choircore:ci --format '{{.Os}}/{{.Architecture}} {{json .Config.Cmd}}'
