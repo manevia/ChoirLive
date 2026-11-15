@@ -90,3 +90,21 @@ jobs:
         working-directory: choircore/server
         run: npm install --no-audit --no-fund
       - run: node test/browser-media.mjs
+
+  deployment-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify deployment configuration using disposable CI values
+        env:
+          NODE_ENV: production
+          ANNOUNCED_IP: 203.0.113.10
+          CHOIRCORE_SINGER_CODE: integration-singer-secret-123456
+          CHOIRCORE_CONDUCTOR_CODE: integration-conductor-secret-123456
+          CHOIRCORE_ENGINEER_CODE: integration-engineer-secret-123456
+          CHOIRCORE_ALLOWED_ORIGINS: https://choir.example.test
+          CHOIRCORE_SIGNALING_URL: wss://signal.example.test
+        run: node scripts/choircore-preflight.mjs
