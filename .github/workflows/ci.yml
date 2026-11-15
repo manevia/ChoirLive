@@ -59,6 +59,7 @@ jobs:
             -e PORT=18091 -e ANNOUNCED_IP=127.0.0.1 \
             -e CHOIRCORE_SINGER_CODE=integration-singer-secret-123 \
             -e CHOIRCORE_CONDUCTOR_CODE=integration-conductor-secret-456 \
+            -e CHOIRCORE_ENGINEER_CODE=integration-engineer-secret-789 \
             choircore:ci
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18091/health; then exit 0; fi
