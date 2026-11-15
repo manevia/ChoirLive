@@ -13,7 +13,7 @@ const child = spawn(process.execPath, ['index.mjs'], {
  env: {...process.env, PORT:String(port), ANNOUNCED_IP:'127.0.0.1',
   CHOIRCORE_SINGER_CODE:codeSinger, CHOIRCORE_CONDUCTOR_CODE:codeConductor,
   CHOIRCORE_ENGINEER_CODE:codeEngineer,
-  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3'},
+  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3', MAX_AUTH_FAILURES:'3'},
  stdio:['ignore','pipe','pipe']
 });
 let logs='';
@@ -100,7 +100,17 @@ try {
  assert.match(tooMany.error,/Room limit reached/);
  const cue=await request(b,6,'cue',{message:'Bar 12'});
  assert.equal(cue.data.ok,true);
- console.log('ChoirCore smoke test passed: health, origin, roles, room capacity, cues');
+ // Invalid secrets across separate sockets share a bounded per-address limit.
+ const attackOne=await connect(origin);
+ const badTwo=await request(attackOne,15,'join',{room:'TEST',name:'Guess',secret:'incorrect-secret'});
+ assert.match(badTwo.error,/Unauthorized/);
+ const attackTwo=await connect(origin);
+ const badThree=await request(attackTwo,16,'join',{room:'TEST',name:'Guess',secret:'incorrect-secret'});
+ assert.match(badThree.error,/Unauthorized/);
+ const blocked=await connect(origin);
+ const blockedResult=await request(blocked,17,'join',{room:'TEST',name:'SingerValid',secret:codeSinger});
+ assert.match(blockedResult.error,/Too many failed access-code attempts/);
+ console.log('ChoirCore smoke test passed: health, origin, roles, room capacity, concurrent joins, auth throttling, cues');
 } catch (error) {
  console.error('Smoke test failed:', error, '\\nChoirCore output:\\n'+logs);
  process.exitCode = 1;
