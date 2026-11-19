@@ -99,7 +99,7 @@ export default function ChoirCoreRoom(){
  },[joined]);
 
  return <section className="choir-app"><div className="choir-shell">
-  <div className="choir-top"><div><span className="choir-kicker">CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
+  <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
   {!joined?<div className="choir-form">
    <label>Your name<input value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
    <label>Room<input value={room} disabled={connecting} onChange={e=>setRoom(e.target.value)}/></label>

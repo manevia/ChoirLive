@@ -1,5 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
 const port = Number(process.env.PORT || 8090);
@@ -25,8 +26,13 @@ const orphanCleanup = setInterval(() => {
 }, 60000);
 orphanCleanup.unref();
 const mediaCodecs = [{kind:'audio',mimeType:'audio/opus',clockRate:48000,channels:2,parameters:{useinbandfec:1}}];
+const choirMark = readFileSync(new URL('./choir-mark.svg', import.meta.url));
 const server = http.createServer((req,res)=>{
  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+ if ((req.method === 'GET' || req.method === 'HEAD') && ['/favicon.ico', '/favicon.svg', '/choir-mark.svg'].includes(pathname)) {
+  res.writeHead(200, {'content-type':'image/svg+xml','cache-control':'public, max-age=3600','content-length':choirMark.length});
+  res.end(req.method === 'HEAD' ? undefined : choirMark);return;
+ }
  if (req.method === 'GET' && (pathname === '/health' || pathname === '/ready')) {
   res.writeHead(200, {'content-type':'application/json','cache-control':'no-store'});
   res.end(JSON.stringify({service:'ChoirCore',status:'ok'}));return;

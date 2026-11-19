@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Music, ArrowRight, Play } from 'lucide-react'
+import { ArrowRight, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import AudioWaveform from '@/components/AudioWaveform'
 
@@ -67,7 +67,7 @@ const HeroSection = () => {
         >
           <div className="relative">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-400 to-indigo-400 flex items-center justify-center shadow-glow-lg">
-              <Music className="w-10 h-10 text-slate-900" />
+              <img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="w-20 h-20" />
             </div>
             {/* Pulse rings */}
             <div className="absolute inset-0 rounded-2xl border-2 border-sky-400/30 animate-ping" />

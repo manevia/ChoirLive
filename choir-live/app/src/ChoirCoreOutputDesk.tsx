@@ -156,7 +156,7 @@ export default function ChoirCoreOutputDesk(){
  };
  return <section className="choir-app" id="choircore-output">
   <div className="choir-shell">
-   <div className="choir-top"><div><span className="choir-kicker">CHOIRCORE · INDEPENDENT OUTPUT</span><h2>Native ChoirCore Sound Desk</h2><p>Receive-only SATB mix · USB audio output · no LiveKit connection</p></div><span className="choir-pill">{connected?'● CONNECTED':'○ OFFLINE'}</span></div>
+   <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT OUTPUT</span><h2>Native ChoirCore Sound Desk</h2><p>Receive-only SATB mix · USB audio output · no LiveKit connection</p></div><span className="choir-pill">{connected?'● CONNECTED':'○ OFFLINE'}</span></div>
    {!connected?<div className="choir-form">
     <label>Engineer display name<input value={name} onChange={e=>setName(e.target.value)}/></label>
     <label>Choir room<input value={room} onChange={e=>setRoom(e.target.value)}/></label>

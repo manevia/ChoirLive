@@ -1,4 +1,4 @@
-import { Music, Github, Twitter, Mail, Heart } from 'lucide-react'
+import { Github, Twitter, Mail, Heart } from 'lucide-react'
 import ConnectionStatus from '@/components/ConnectionStatus'
 
 const FooterSection = () => {
@@ -60,7 +60,7 @@ const FooterSection = () => {
               }}
             >
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-400 to-indigo-400 flex items-center justify-center">
-                <Music className="w-5 h-5 text-slate-900" />
+                <img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="w-10 h-10" />
               </div>
               <span className="font-semibold text-xl text-slate-100">
                 Choir<span className="text-sky-400">Live</span>

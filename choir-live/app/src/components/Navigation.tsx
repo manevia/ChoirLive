@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Music, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const Navigation = () => {
@@ -50,7 +50,7 @@ const Navigation = () => {
             }}
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-indigo-400 flex items-center justify-center group-hover:shadow-glow transition-shadow">
-              <Music className="w-5 h-5 text-slate-900" />
+              <img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="w-8 h-8" />
             </div>
             <span className="font-semibold text-lg text-slate-100">
               Choir<span className="text-sky-400">Live</span>
