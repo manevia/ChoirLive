@@ -98,7 +98,7 @@ export default function ChoirCoreRoom(){
   return()=>{active=false;window.clearInterval(timer);};
  },[joined]);
 
- return <section className="choir-app"><div className="choir-shell">
+ return <section className="choir-app" id="choircore-room"><div className="choir-shell">
   <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
   {!joined?<div className="choir-form">
    <label>Your name<input value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
@@ -107,11 +107,11 @@ export default function ChoirCoreRoom(){
    <label>Role<select value={role} disabled={connecting} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
    <label>Section<select value={section} disabled={connecting} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label>
    <div className="choir-actions"><button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Join / Rejoin room'}</button>{connecting&&<button onClick={leave}>Cancel connection</button>}</div>
-   <p className="choir-hint">Remote microphone access requires HTTPS for ChoirLive and WSS for ChoirCore. If a network disconnect occurs, use Rejoin room.</p>
+   <p className="choir-hint">Joining enables your microphone. First <a href="#microphone-test" className="underline">check your microphone and record a test</a>. If a network disconnect occurs, use Rejoin room.</p>
   </div>:<div className="choir-panel">
    <h3>Connected singers ({remotes.length})</h3>
    {remotes.map(participant=><p key={participant.producerId}>{participant.name} — {participant.section}</p>)}
-   <div className="choir-actions"><button onClick={()=>{mic.current?.getAudioTracks().forEach(t=>t.enabled=muted);setMuted(!muted);}}>{muted?'Unmute':'Mute'}</button>
+   <div className="choir-actions"><button onClick={()=>{mic.current?.getAudioTracks().forEach(t=>t.enabled=muted);setMuted(!muted);}}>{muted?'Unmute microphone':'Mute microphone'}</button>
    <button onClick={()=>audio.current.forEach(element=>void element.play().catch(()=>setStatus('Browser blocked audio playback')))}>Enable playback</button>
    <button onClick={leave}>Leave room</button></div>
    {role==='conductor'&&<div><label>Conductor cue<input value={cue} maxLength={120} onChange={e=>setCue(e.target.value)}/></label><button disabled={!cue.trim()} onClick={()=>void client.current?.cue(cue).catch(error=>setStatus(String(error)))}>Broadcast cue</button></div>}

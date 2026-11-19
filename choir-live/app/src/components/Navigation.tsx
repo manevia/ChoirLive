@@ -16,6 +16,7 @@ const Navigation = () => {
   }, [])
 
   const navLinks = [
+    { label: 'Audio check', href: '#microphone-test' },
     { label: 'Architecture', href: '#architecture' },
     { label: 'Features', href: '#features' },
     { label: 'Specs', href: '#specs' },
@@ -74,7 +75,7 @@ const Navigation = () => {
           <div className="hidden md:block">
             <Button 
               className="bg-sky-400 hover:bg-sky-500 text-slate-900 font-medium"
-              onClick={() => scrollToSection('#architecture')}
+              onClick={() => scrollToSection('#choircore-room')}
             >
               Start Rehearsal
             </Button>
@@ -104,7 +105,7 @@ const Navigation = () => {
               ))}
               <Button 
                 className="mt-2 bg-sky-400 hover:bg-sky-500 text-slate-900 font-medium"
-                onClick={() => scrollToSection('#architecture')}
+                onClick={() => scrollToSection('#choircore-room')}
               >
                 Start Rehearsal
               </Button>

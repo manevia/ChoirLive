@@ -126,7 +126,7 @@ const HeroSection = () => {
           <Button 
             size="lg"
             className="bg-sky-400 hover:bg-sky-500 text-slate-900 font-semibold px-8 py-6 text-lg group"
-            onClick={scrollToArchitecture}
+            onClick={() => document.querySelector('#choircore-room')?.scrollIntoView({behavior:'smooth'})}
           >
             Start Rehearsal
             <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />

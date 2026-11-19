@@ -1,8 +1,6 @@
-import ChoirRoom from './ChoirRoom'
+import MicrophoneTest from './MicrophoneTest'
 import ChoirCoreRoom from './ChoirCoreRoom'
 import ChoirCoreOutputDesk from './ChoirCoreOutputDesk'
-import SfuChoirRoom from './SfuChoirRoom'
-import OutputDesk from './OutputDesk'
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import HeroSection from './sections/HeroSection'
@@ -61,11 +59,9 @@ function App() {
         {/* Content Sections */}
         <div className="relative z-10">
           <HeroSection />
+          <MicrophoneTest />
           <ChoirCoreRoom />
           <ChoirCoreOutputDesk />
-          <SfuChoirRoom />
-          <OutputDesk />
-          <ChoirRoom />
           <ArchitectureSection />
           <FeaturesSection />
           <TechSpecsSection />
