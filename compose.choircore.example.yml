@@ -8,11 +8,14 @@ services:
       context: ./choircore/server
     restart: unless-stopped
     network_mode: host
+    volumes:
+      - choircore-accounts:/app/data
     environment:
       PORT: "8090"
       ANNOUNCED_IP: "${ANNOUNCED_IP:?Public media host IP required}"
       CHOIRCORE_SINGER_CODE: "${CHOIRCORE_SINGER_CODE:?Singer code required}"
       CHOIRCORE_CONDUCTOR_CODE: "${CHOIRCORE_CONDUCTOR_CODE:?Conductor code required}"
+      CHOIRCORE_ADMIN_CODE: "${CHOIRCORE_ADMIN_CODE:-}"
       CHOIRCORE_ENGINEER_CODE: "${CHOIRCORE_ENGINEER_CODE:?Engineer code required}"
       CHOIRCORE_ALLOWED_ORIGINS: "${CHOIRCORE_ALLOWED_ORIGINS:?Allowed browser origins required}"
       MAX_CONNECTIONS: "${MAX_CONNECTIONS:-100}"
@@ -20,3 +23,6 @@ services:
       MAX_ROOMS: "${MAX_ROOMS:-20}"
       MAX_AUTH_FAILURES: "${MAX_AUTH_FAILURES:-10}"
       NODE_ENV: production
+
+volumes:
+  choircore-accounts:

@@ -8,11 +8,12 @@ const origin = 'https://choirlive.example.test';
 const codeSinger = 'test-singer-code-12345';
 const codeConductor = 'test-conductor-code-12345';
 const codeEngineer = 'test-engineer-code-12345';
+const adminCode='disposable-admin-code-for-ci-12345';
 const child = spawn(process.execPath, ['index.mjs'], {
  cwd: new URL('..', import.meta.url),
  env: {...process.env, PORT:String(port), ANNOUNCED_IP:'127.0.0.1',
   CHOIRCORE_SINGER_CODE:codeSinger, CHOIRCORE_CONDUCTOR_CODE:codeConductor,
-  CHOIRCORE_ENGINEER_CODE:codeEngineer,
+  CHOIRCORE_ENGINEER_CODE:codeEngineer, CHOIRCORE_ADMIN_CODE:adminCode, CHOIRCORE_ACCOUNT_DB:':memory:',
   CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3', MAX_AUTH_FAILURES:'4'},
  stdio:['ignore','pipe','pipe']
 });
@@ -80,6 +81,27 @@ try {
  const expired=await request(afterEnd,104,'join',{room:created.data.room,name:'Invited Singer',secret:created.data.invitations.singer,role:'singer'});
  assert.match(expired.error,/expired or ended/);
  for(const ws of [host,invitee,deskInvite,afterEnd])ws.terminate();
+ const workspaceHost=await connect(origin);
+ const w1=await request(workspaceHost,200,'registerAccount',{email:'owner1@example.test',password:'disposable-password-001',workspaceName:'First Choir'});
+ const w2=await request(workspaceHost,201,'registerAccount',{email:'owner2@example.test',password:'disposable-password-002',workspaceName:'Second Choir'});
+ assert.ok(w1.data?.workspaceId&&w2.data?.workspaceId);
+ assert.notEqual(w1.data.workspaceId,w2.data.workspaceId);
+ assert.equal(w1.data.active,false);
+ const pending=await request(workspaceHost,202,'createSession',{authToken:w1.data.authToken,title:'Pending Choir',minutes:60});
+ assert.match(pending.error,/activation/);
+ const approved=await request(workspaceHost,203,'approveWorkspace',{workspaceId:w1.data.workspaceId,adminCode});
+ assert.equal(approved.data.ok,true);
+ const owned=await request(workspaceHost,204,'createSession',{authToken:w1.data.authToken,title:'First Choir',minutes:60});
+ assert.ok(owned.data?.room);
+ const list1=await request(workspaceHost,205,'listSessions',{authToken:w1.data.authToken});
+ const list2=await request(workspaceHost,206,'listSessions',{authToken:w2.data.authToken});
+ assert.equal(list1.data.length,1);
+ assert.equal(list2.data.length,0);
+ const cannotEnd=await request(workspaceHost,207,'endSession',{authToken:w2.data.authToken,room:owned.data.room});
+ assert.match(cannotEnd.error,/authorization/);
+ const endedOwned=await request(workspaceHost,208,'endSession',{authToken:w1.data.authToken,room:owned.data.room});
+ assert.equal(endedOwned.data.ok,true);
+ workspaceHost.terminate();
  const a=await connect(origin);
  const bad=await request(a,1,'join',{room:'TEST',name:'SingerA',secret:'wrong'});
  assert.match(bad.error,/Unauthorized/);

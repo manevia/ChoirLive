@@ -3,10 +3,14 @@ import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import * as mediasoup from 'mediasoup';
+import {createAccounts} from './accounts.mjs';
+const accounts=createAccounts();
 const port = Number(process.env.PORT || 8090);
 const singerCode = process.env.CHOIRCORE_SINGER_CODE;
 const conductorCode = process.env.CHOIRCORE_CONDUCTOR_CODE;
 const engineerCode = process.env.CHOIRCORE_ENGINEER_CODE;
+const adminCode=process.env.CHOIRCORE_ADMIN_CODE||'';
+if(adminCode&&(adminCode.length<24||[singerCode,conductorCode,engineerCode].includes(adminCode)))throw Error('Set a distinct CHOIRCORE_ADMIN_CODE of at least 24 characters');
 if (!singerCode || singerCode.length < 12 || !conductorCode || conductorCode.length < 12 || !engineerCode || engineerCode.length < 12 || new Set([singerCode,conductorCode,engineerCode]).size!==3) throw new Error('Set three distinct CHOIRCORE_SINGER_CODE, CHOIRCORE_CONDUCTOR_CODE and CHOIRCORE_ENGINEER_CODE secrets (12+ chars)');
 const announcedAddress = process.env.ANNOUNCED_IP;
 if (!announcedAddress) throw new Error('Set ANNOUNCED_IP to the public IP or reachable DNS name');
@@ -58,9 +62,11 @@ const MAX_AUTH_FAILURES = Number(process.env.MAX_AUTH_FAILURES || 10);
 const AUTH_WINDOW_MS = 60000;
 if (!Number.isSafeInteger(MAX_AUTH_FAILURES) || MAX_AUTH_FAILURES < 1) throw new Error('Invalid MAX_AUTH_FAILURES');
 const authFailures = new Map();
+const signupAttempts=new Map();
 const authSweep = setInterval(() => {
  const now = Date.now();
  for (const [address,record] of authFailures) if (now - record.start >= AUTH_WINDOW_MS) authFailures.delete(address);
+ for(const [address,record] of signupAttempts)if(now-record.start>=AUTH_WINDOW_MS)signupAttempts.delete(address);
 },AUTH_WINDOW_MS);
 authSweep.unref();
 function failedAuth(ip) {
@@ -157,10 +163,45 @@ wss.on('connection',ws=>{
   if (now - windowStart >= 10000) { windowStart = now; messageCount = 0; }
   if (++messageCount > MAX_MESSAGES_PER_10S) { ws.close(1008, 'Rate limit exceeded'); return; }
   let msg;try{msg=JSON.parse(raw.toString());}catch{return;}const {id,action,data={}}=msg;try{
+  if(action==='registerAccount'||action==='loginAccount'){
+   if(authBlocked(remoteAddress))throw Error('Too many authorization attempts. Try again later');
+   if(peer.room||joining)throw Error('Leave the rehearsal before managing accounts');
+   if(action==='registerAccount'){
+    // Bound signup attempts as well as failed logins.
+    const now=Date.now();let signup=signupAttempts.get(remoteAddress);
+    if(!signup||now-signup.start>=AUTH_WINDOW_MS)signup={start:now,count:0};
+    signupAttempts.set(remoteAddress,signup);
+    if(++signup.count>10)throw Error('Registration temporarily limited; try again later');
+    reply(ws,id,await accounts.register(data));return;
+   }
+   const signedIn=await accounts.login(data);
+   if(!signedIn){failedAuth(remoteAddress);throw Error('Email or password incorrect');}
+   reply(ws,id,signedIn);return;
+  }
+  if(action==='logoutAccount'){accounts.logout(data.authToken);reply(ws,id,{ok:true});return;}
+  if(action==='approveWorkspace'){
+   if(authBlocked(remoteAddress))throw Error('Too many authorization attempts. Try again later');
+   if(!adminCode)throw Error('Workspace activation is not configured');
+   if(!matches(data.adminCode,digest(adminCode))){failedAuth(remoteAddress);throw Error('Administrator authorization failed');}
+   if(!accounts.approve(data.workspaceId))throw Error('Workspace not found');
+   reply(ws,id,{ok:true});return;
+  }
+  if(action==='workspace'||action==='listSessions'){
+   const account=accounts.authenticate(data.authToken);
+   if(!account)throw Error('Sign in to your workspace');
+   if(action==='workspace'){
+    reply(ws,id,{email:account.email,workspaceId:account.workspaceId,workspaceName:account.workspaceName,active:account.active});return;
+   }
+   reply(ws,id,[...sessions.entries()].filter(([,s])=>s.workspaceId===account.workspaceId&&s.expiresAt>Date.now()).map(([room,s])=>({room,title:s.title,expiresAt:s.expiresAt})));return;
+  }
   if(action==='createSession'){
    if(peer.room || joining)throw Error('Leave the rehearsal before creating another session');
-   if(authBlocked(remoteAddress))throw Error('Too many failed authorization attempts. Try again later');
-   if(!matches(data.hostCode,digest(conductorCode))){
+   const account=accounts.authenticate(data.authToken);
+   if(data.authToken!==undefined){
+    if(!account)throw Error('Sign in to your workspace');
+    if(!account.active)throw Error('Workspace requires administrator activation');
+    if([...sessions.values()].filter(s=>s.workspaceId===account.workspaceId&&s.expiresAt>Date.now()).length>=3)throw Error('Workspace active rehearsal limit reached');
+   }else if(authBlocked(remoteAddress)||!matches(data.hostCode,digest(conductorCode))){
     failedAuth(remoteAddress);throw Error('Host authorization failed');
    }
    const title=displayName(data.title);
@@ -171,12 +212,21 @@ wss.on('connection',ws=>{
    const invitations=Object.fromEntries(sessionRoles.map(role=>[role,token()]));
    const managerToken=token();
    const expiresAt=Date.now()+minutes*60000;
-   sessions.set(room,{title,expiresAt,manager:digest(managerToken),roles:Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]))});
-   reply(ws,id,{room,title,expiresAt,invitations,managerToken});return;
+   sessions.set(room,{title,expiresAt,workspaceId:account?.workspaceId||null,manager:digest(managerToken),roles:Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]))});
+   reply(ws,id,{room,title,expiresAt,invitations,...(account?{}:{managerToken})});return;
   }
-  if(action==='endSession'){
+  if(action==='endSession'||action==='rotateInvitations'){
    const session=sessions.get(data.room);
-   if(!session||!matches(data.managerToken,session.manager))throw Error('Session management authorization failed');
+   const account=accounts.authenticate(data.authToken);
+   if(!session||session.expiresAt<=Date.now())throw Error('Rehearsal expired or ended');
+   const authorized=session.workspaceId?account?.workspaceId===session.workspaceId:matches(data.managerToken,session.manager);
+   if(!authorized)throw Error('Session management authorization failed');
+   if(action==='rotateInvitations'){
+    if(!account||!session.workspaceId)throw Error('Workspace ownership required');
+    const invitations=Object.fromEntries(sessionRoles.map(role=>[role,token()]));
+    session.roles=Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]));
+    reply(ws,id,{room:data.room,title:session.title,expiresAt:session.expiresAt,invitations});return;
+   }
    endSession(data.room);reply(ws,id,{ok:true});return;
   }
   if(action==='join'){

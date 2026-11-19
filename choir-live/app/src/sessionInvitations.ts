@@ -1,6 +1,6 @@
 export type InvitationRole = 'singer' | 'conductor' | 'engineer';
 export type Invitation = {room:string;role:InvitationRole;token:string};
-export type Session = {room:string;title:string;expiresAt:number;invitations:Record<InvitationRole,string>;managerToken:string};
+export type Session = {room:string;title:string;expiresAt:number;invitations:Record<InvitationRole,string>;managerToken?:string};
 export const roles:InvitationRole[]=['singer','conductor','engineer'];
 export function readInvitation():Invitation|null{
  const values=new URLSearchParams(window.location.hash.slice(1));
