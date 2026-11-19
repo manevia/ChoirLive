@@ -101,6 +101,14 @@ try {
  assert.match(cannotEnd.error,/authorization/);
  const endedOwned=await request(workspaceHost,208,'endSession',{authToken:w1.data.authToken,room:owned.data.room});
  assert.equal(endedOwned.data.ok,true);
+ const history=await request(workspaceHost,209,'rehearsalHistory',{authToken:w1.data.authToken});assert.equal(history.data[0].status,'ended');
+ const otherHistory=await request(workspaceHost,210,'rehearsalHistory',{authToken:w2.data.authToken});assert.equal(otherHistory.data.length,0);
+ const scheduled=await request(workspaceHost,211,'createSession',{authToken:w1.data.authToken,title:'Future session',minutes:60,startsAt:Date.now()+3600000});assert.ok(scheduled.data.room);
+ const earlyPeer=await connect(origin);
+ const early=await request(earlyPeer,212,'join',{room:scheduled.data.room,name:'Early Singer',secret:scheduled.data.invitations.singer,role:'singer'});assert.match(early.error,/not started/);
+ earlyPeer.terminate();
+ const cancelled=await request(workspaceHost,213,'endSession',{authToken:w1.data.authToken,room:scheduled.data.room});assert.equal(cancelled.data.ok,true);
+ const afterCancel=await request(workspaceHost,214,'rehearsalHistory',{authToken:w1.data.authToken});assert.ok(afterCancel.data.some(s=>s.room===scheduled.data.room&&s.status==='cancelled'));
  workspaceHost.terminate();
  const a=await connect(origin);
  const bad=await request(a,1,'join',{room:'TEST',name:'SingerA',secret:'wrong'});

@@ -3,7 +3,8 @@ import {invitationLink,roles,sessionRequest,type Session,type InvitationRole} fr
 import './ChoirRoom.css';
 type Workspace={email:string;workspaceId:string;workspaceName:string;active:boolean};
 type Login=Workspace&{authToken:string};
-type Listing=Pick<Session,'room'|'title'|'expiresAt'>;
+type Listing=Pick<Session,'room'|'title'|'startsAt'|'expiresAt'>&{status:'active'|'scheduled'};
+type Past=Pick<Session,'room'|'title'|'startsAt'|'expiresAt'>&{endedAt:number;status:'ended'|'expired'|'cancelled'};
 const labels:Record<InvitationRole,string>={singer:'Singer',conductor:'Conductor',engineer:'Sound engineer'};
 export default function SessionManager(){
  const [mode,setMode]=useState<'login'|'register'>('login');
@@ -13,6 +14,9 @@ export default function SessionManager(){
  const [account,setAccount]=useState<Login|null>(null);
  const [title,setTitle]=useState('Choir rehearsal');
  const [minutes,setMinutes]=useState(120);
+ const [scheduled,setScheduled]=useState(false);
+ const [scheduleDate,setScheduleDate]=useState('');
+ const [history,setHistory]=useState<Past[]>([]);
  const [sessions,setSessions]=useState<Listing[]>([]);
  const [selected,setSelected]=useState<Session|null>(null);
  const [busy,setBusy]=useState(false);
@@ -20,8 +24,8 @@ export default function SessionManager(){
  const [approvalId,setApprovalId]=useState('');
  const [adminCode,setAdminCode]=useState('');
  const update=async (authToken:string)=>{
-  const [workspace,list]=await Promise.all([sessionRequest<Workspace>('workspace',{authToken}),sessionRequest<Listing[]>('listSessions',{authToken})]);
-  setAccount({...workspace,authToken});setSessions(list);
+  const [workspace,list,past]=await Promise.all([sessionRequest<Workspace>('workspace',{authToken}),sessionRequest<Listing[]>('listSessions',{authToken}),sessionRequest<Past[]>('rehearsalHistory',{authToken})]);
+  setAccount({...workspace,authToken});setSessions(list);setHistory(past);
  };
  const perform=async(fn:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setStatus('');
@@ -34,15 +38,17 @@ export default function SessionManager(){
  });
  const signOut=()=>perform(async()=>{
   if(account)await sessionRequest('logoutAccount',{authToken:account.authToken});
-  setAccount(null);setSessions([]);setSelected(null);setPassword('');setStatus('Signed out.');
+  setAccount(null);setSessions([]);setHistory([]);setSelected(null);setPassword('');setStatus('Signed out.');
  });
  const create=()=>perform(async()=>{
   if(!account?.active)return;
-  const result=await sessionRequest<Session>('createSession',{title:title.trim(),minutes,authToken:account.authToken});
-  setSelected(result);await update(account.authToken);setStatus('Rehearsal created. Copy the role invitations below.');
+  const startsAt=scheduled?new Date(scheduleDate).getTime():undefined;
+  if(scheduled&&(!startsAt||startsAt<=Date.now()))throw Error('Choose a future rehearsal date and time');
+  const result=await sessionRequest<Session>('createSession',{title:title.trim(),minutes,startsAt,authToken:account.authToken});
+  setSelected(result);await update(account.authToken);setStatus(scheduled?'Rehearsal scheduled. Share its invitations in advance.':'Rehearsal created. Copy the role invitations below.');
  });
  const end=(room:string)=>perform(async()=>{
-  if(!account||!window.confirm('End this rehearsal and disconnect its participants?'))return;
+  if(!account||!window.confirm('End or cancel this rehearsal and invalidate its invitations?'))return;
   await sessionRequest('endSession',{room,authToken:account.authToken});if(selected?.room===room)setSelected(null);await update(account.authToken);setStatus('Rehearsal ended.');
  });
  const rotate=(room:string)=>perform(async()=>{
@@ -68,11 +74,14 @@ export default function SessionManager(){
    {account.active&&<div className="choir-form">
     <label>Rehearsal title<input maxLength={64} value={title} onChange={e=>setTitle(e.target.value)}/></label>
     <label>Duration (minutes)<input type="number" min={15} max={480} value={minutes} onChange={e=>setMinutes(Number(e.target.value))}/></label>
-    <button disabled={busy||!title.trim()||minutes<15||minutes>480} onClick={()=>void create()}>Create session & invitations</button>
+    <label>Rehearsal start<select value={scheduled?'later':'now'} onChange={e=>setScheduled(e.target.value==='later')}><option value="now">Start now</option><option value="later">Schedule for later</option></select></label>
+    {scheduled&&<label>Start date and time (your local time)<input type="datetime-local" value={scheduleDate} onChange={e=>setScheduleDate(e.target.value)}/></label>}
+    <button disabled={busy||!title.trim()||minutes<15||minutes>480||(scheduled&&!scheduleDate)} onClick={()=>void create()}>{scheduled?'Schedule rehearsal & invitations':'Create session & invitations'}</button>
    </div>}
-   <div className="choir-panel"><h3>Active rehearsals</h3>{sessions.length===0&&<p>No active rehearsals.</p>}{sessions.map(s=><div className="choir-person" key={s.room}><span>{s.title}<small>Expires {new Date(s.expiresAt).toLocaleString()}</small></span><div className="choir-actions"><button disabled={busy} onClick={()=>void rotate(s.room)}>Regenerate links</button><button disabled={busy} className="danger" onClick={()=>void end(s.room)}>End</button></div></div>)}</div>
-   {selected&&<div className="choir-panel"><h3>Invitations: {selected.title}</h3>{roles.map(role=><div key={role} className="choir-person"><span>{labels[role]}</span><div className="choir-actions"><button onClick={async()=>{try{await navigator.clipboard.writeText(invitationLink(selected,role));setStatus(labels[role]+' invitation copied.');}catch{setStatus('Clipboard unavailable; open the invitation in a new tab.');}}}>Copy {labels[role]} link</button><a href={invitationLink(selected,role)} target="_blank" rel="noreferrer">Open invitation</a></div></div>)}
-    <p className="choir-hint">Share links privately with their intended roles. A server restart ends active sessions; accounts and workspaces are retained with persistent storage.</p></div>}
+   <div className="choir-panel"><h3>Active and upcoming rehearsals</h3>{sessions.length===0&&<p>No active or upcoming rehearsals.</p>}{sessions.map(s=><div className="choir-person" key={s.room}><span>{s.title}<small>{s.status==='scheduled'?'Scheduled':'Active'} · {new Date(s.startsAt).toLocaleString()} – {new Date(s.expiresAt).toLocaleString()}</small></span><div className="choir-actions"><button disabled={busy} onClick={()=>void rotate(s.room)}>Regenerate links</button><button disabled={busy} className="danger" onClick={()=>void end(s.room)}>{s.status==='scheduled'?'Cancel':'End'}</button></div></div>)}</div>
+   <div className="choir-panel"><h3>Rehearsal history</h3><p className="choir-hint">Last 50 completed rehearsals within 180 days. Recordings are not stored here.</p>{history.length===0&&<p>No completed rehearsals yet.</p>}{history.map(s=><div className="choir-person" key={s.room}><span>{s.title}<small>{new Date(s.startsAt).toLocaleString()} · {s.status}</small></span><small>{new Date(s.endedAt).toLocaleString()}</small></div>)}</div>
+   {selected&&<div className="choir-panel"><h3>Invitations: {selected.title}</h3><p>Starts {new Date(selected.startsAt).toLocaleString()} · Expires {new Date(selected.expiresAt).toLocaleString()}</p>{roles.map(role=><div key={role} className="choir-person"><span>{labels[role]}</span><div className="choir-actions"><button onClick={async()=>{try{await navigator.clipboard.writeText(invitationLink(selected,role));setStatus(labels[role]+' invitation copied.');}catch{setStatus('Clipboard unavailable; open the invitation in a new tab.');}}}>Copy {labels[role]} link</button><a href={invitationLink(selected,role)} target="_blank" rel="noreferrer">Open invitation</a></div></div>)}
+    <p className="choir-hint">Share links privately with their intended roles. Session invitations and schedule survive server restarts when persistent storage is available. Participants must rejoin after a restart. Regenerate links if you no longer have the original links.</p></div>}
   </>}
   <details className="choir-panel"><summary>Administrator activation</summary><div className="choir-form">
    <label>Workspace ID<input value={approvalId} onChange={e=>setApprovalId(e.target.value)}/></label>

@@ -26,7 +26,10 @@ export function createAccounts(path=process.env.CHOIRCORE_ACCOUNT_DB||':memory:'
  CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,salt TEXT NOT NULL,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL UNIQUE REFERENCES accounts(id),name TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS account_sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires_at INTEGER NOT NULL);
- CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);`);
+ CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);
+ CREATE TABLE IF NOT EXISTS rehearsals(room TEXT PRIMARY KEY,workspace_id TEXT REFERENCES workspaces(id),title TEXT NOT NULL,created_at INTEGER NOT NULL,starts_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,ended_at INTEGER,status TEXT NOT NULL DEFAULT 'open',manager_hash TEXT NOT NULL,role_hashes TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS rehearsals_workspace ON rehearsals(workspace_id,created_at DESC);
+ CREATE INDEX IF NOT EXISTS rehearsals_expiry ON rehearsals(status,expires_at);`);
  const accountByEmail=db.prepare('SELECT * FROM accounts WHERE email=?');
  const workspaceByOwner=db.prepare('SELECT id,name,active FROM workspaces WHERE owner_id=?');
  const readSession=db.prepare('SELECT a.id,a.email,w.id AS workspaceId,w.name AS workspaceName,w.active FROM account_sessions s JOIN accounts a ON a.id=s.account_id JOIN workspaces w ON w.owner_id=a.id WHERE s.token_hash=? AND s.expires_at>?');
@@ -74,6 +77,29 @@ export function createAccounts(path=process.env.CHOIRCORE_ACCOUNT_DB||':memory:'
   approve(workspaceId){
    if(typeof workspaceId!=='string'||! /^[0-9a-f-]{36}$/.test(workspaceId))throw Error('Enter a workspace ID');
    return db.prepare('UPDATE workspaces SET active=1 WHERE id=?').run(workspaceId).changes===1;
+  },
+  saveRehearsal(room,session){
+   db.prepare('INSERT INTO rehearsals(room,workspace_id,title,created_at,starts_at,expires_at,manager_hash,role_hashes) VALUES(?,?,?,?,?,?,?,?)').run(room,session.workspaceId,session.title,session.createdAt,session.startsAt,session.expiresAt,session.manager.toString('hex'),JSON.stringify(Object.fromEntries(Object.entries(session.roles).map(([role,digest])=>[role,digest.toString('hex')]))));
+  },
+  restoreRehearsals(now=Date.now()){
+   this.expireRehearsals(now);
+   return db.prepare("SELECT * FROM rehearsals WHERE status='open' AND expires_at>?").all(now).map(row=>[row.room,{workspaceId:row.workspace_id,title:row.title,createdAt:row.created_at,startsAt:row.starts_at,expiresAt:row.expires_at,manager:Buffer.from(row.manager_hash,'hex'),roles:Object.fromEntries(Object.entries(JSON.parse(row.role_hashes)).map(([role,hash])=>[role,Buffer.from(hash,'hex')]))}]);
+  },
+  rotateRehearsal(room,roles){
+   const hashes=JSON.stringify(Object.fromEntries(Object.entries(roles).map(([role,digest])=>[role,digest.toString('hex')])));
+   if(db.prepare("UPDATE rehearsals SET role_hashes=? WHERE room=? AND status='open' AND expires_at>?").run(hashes,room,Date.now()).changes!==1)throw Error('Rehearsal no longer active');
+  },
+  closeRehearsal(room,status,endedAt=Date.now()){
+   if(!['ended','cancelled','expired'].includes(status))throw Error('Invalid rehearsal status');
+   db.prepare("UPDATE rehearsals SET status=?,ended_at=?,manager_hash='',role_hashes='{}' WHERE room=? AND status='open'").run(status,endedAt,room);
+  },
+  expireRehearsals(now=Date.now()){
+   db.prepare("UPDATE rehearsals SET status='expired',ended_at=expires_at,manager_hash='',role_hashes='{}' WHERE status='open' AND expires_at<=?").run(now);
+   // Retain only the last 180 days of completed metadata; no audio or plaintext invite tokens.
+   db.prepare("DELETE FROM rehearsals WHERE status!='open' AND ended_at<?").run(now-180*86400000);
+  },
+  rehearsalHistory(workspaceId){
+   return db.prepare("SELECT room,title,created_at AS createdAt,starts_at AS startsAt,expires_at AS expiresAt,ended_at AS endedAt,status FROM rehearsals WHERE workspace_id=? AND status!='open' ORDER BY ended_at DESC LIMIT 50").all(workspaceId);
   },
   close(){db.close();}
  };

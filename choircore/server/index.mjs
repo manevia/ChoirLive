@@ -17,7 +17,7 @@ if (!announcedAddress) throw new Error('Set ANNOUNCED_IP to the public IP or rea
 const worker = await mediasoup.createWorker({rtcMinPort:40000,rtcMaxPort:40100,logLevel:'warn'});
 worker.on('died',()=>process.exit(1));
 const rooms = new Map();
-const sessions = new Map();
+const sessions = new Map(accounts.restoreRehearsals());
 const pendingRooms = new Map();
 // If a client closes before an asynchronous room join completes, allow other
 // concurrent admissions to finish before cleaning the orphaned empty router.
@@ -114,7 +114,10 @@ const digest=value=>crypto.createHash('sha256').update(value).digest();
 function matches(value,expected){
  return typeof value==='string' && value.length<=256 && crypto.timingSafeEqual(digest(value),expected);
 }
-function endSession(room) {
+function endSession(room,status='ended') {
+ const session=sessions.get(room);
+ if(!session)return;
+ accounts.closeRehearsal(room,status,status==='expired'?session.expiresAt:Date.now());
  sessions.delete(room);
  const active=rooms.get(room);
  if(active)for(const participant of [...active.peers]){
@@ -123,9 +126,13 @@ function endSession(room) {
  }
 }
 const sessionSweep=setInterval(()=>{
- for(const [room,session] of sessions)if(session.expiresAt<=Date.now())endSession(room);
+ for(const [room,session] of sessions)if(session.expiresAt<=Date.now()){
+  try{endSession(room,'expired');}catch{console.error('Could not persist rehearsal expiry; will retry');}
+ }
 },1000);
 sessionSweep.unref();
+const historySweep=setInterval(()=>{try{accounts.expireRehearsals();}catch{console.error('Could not perform rehearsal history maintenance');}},3600000);
+historySweep.unref();
 async function getRoom(name) {
  const existing = rooms.get(name);
  if (existing) return existing;
@@ -193,13 +200,14 @@ wss.on('connection',ws=>{
    if(!accounts.approve(data.workspaceId))throw Error('Workspace not found');
    reply(ws,id,{ok:true});return;
   }
-  if(action==='workspace'||action==='listSessions'){
+  if(action==='workspace'||action==='listSessions'||action==='rehearsalHistory'){
    const account=accounts.authenticate(data.authToken);
    if(!account)throw Error('Sign in to your workspace');
    if(action==='workspace'){
     reply(ws,id,{email:account.email,workspaceId:account.workspaceId,workspaceName:account.workspaceName,active:account.active});return;
    }
-   reply(ws,id,[...sessions.entries()].filter(([,s])=>s.workspaceId===account.workspaceId&&s.expiresAt>Date.now()).map(([room,s])=>({room,title:s.title,expiresAt:s.expiresAt})));return;
+   if(action==='rehearsalHistory'){reply(ws,id,accounts.rehearsalHistory(account.workspaceId));return;}
+   reply(ws,id,[...sessions.entries()].filter(([,s])=>s.workspaceId===account.workspaceId&&s.expiresAt>Date.now()).map(([room,s])=>({room,title:s.title,startsAt:s.startsAt,expiresAt:s.expiresAt,status:s.startsAt>Date.now()?'scheduled':'active'})));return;
   }
   if(action==='createSession'){
    if(peer.room || joining)throw Error('Leave the rehearsal before creating another session');
@@ -214,13 +222,17 @@ wss.on('connection',ws=>{
    const title=displayName(data.title);
    const minutes=data.minutes;
    if(!title||!Number.isInteger(minutes)||minutes<15||minutes>480)throw Error('Enter a session title and duration of 15–480 minutes');
+   const createdAt=Date.now();
+   const startsAt=data.startsAt===undefined||data.startsAt===null?createdAt:data.startsAt;
+   if(!Number.isSafeInteger(startsAt)||startsAt<createdAt-60000||startsAt>createdAt+30*86400000)throw Error('Schedule rehearsals up to 30 days in advance');
    if(sessions.size>=MAX_ROOMS)throw Error('Session limit reached');
    const room=SESSION_PREFIX+crypto.randomBytes(12).toString('hex');
    const invitations=Object.fromEntries(sessionRoles.map(role=>[role,token()]));
    const managerToken=token();
-   const expiresAt=Date.now()+minutes*60000;
-   sessions.set(room,{title,expiresAt,workspaceId:account?.workspaceId||null,manager:digest(managerToken),roles:Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]))});
-   reply(ws,id,{room,title,expiresAt,invitations,...(account?{}:{managerToken})});return;
+   const expiresAt=startsAt+minutes*60000;
+   const session={title,createdAt,startsAt,expiresAt,workspaceId:account?.workspaceId||null,manager:digest(managerToken),roles:Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]))};
+   accounts.saveRehearsal(room,session);sessions.set(room,session);
+   reply(ws,id,{room,title,startsAt,expiresAt,invitations,...(account?{}:{managerToken})});return;
   }
   if(action==='endSession'||action==='rotateInvitations'){
    const session=sessions.get(data.room);
@@ -231,10 +243,11 @@ wss.on('connection',ws=>{
    if(action==='rotateInvitations'){
     if(!account||!session.workspaceId)throw Error('Workspace ownership required');
     const invitations=Object.fromEntries(sessionRoles.map(role=>[role,token()]));
-    session.roles=Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]));
-    reply(ws,id,{room:data.room,title:session.title,expiresAt:session.expiresAt,invitations});return;
+    const roles=Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]));
+    accounts.rotateRehearsal(data.room,roles);session.roles=roles;
+    reply(ws,id,{room:data.room,title:session.title,startsAt:session.startsAt,expiresAt:session.expiresAt,invitations});return;
    }
-   endSession(data.room);reply(ws,id,{ok:true});return;
+   endSession(data.room,session.startsAt>Date.now()?'cancelled':'ended');reply(ws,id,{ok:true});return;
   }
   if(action==='join'){
    if(peer.room || joining)throw Error('Already joining or joined');
@@ -253,6 +266,7 @@ wss.on('connection',ws=>{
     failedAuth(remoteAddress);
     throw Error('Unauthorized');
    }
+   if(isSession&&session.startsAt>Date.now())throw Error('This rehearsal has not started yet. Return at the scheduled time.');
    const selectedRoom = await getRoom(data.room);
    if (socketClosed || ws.readyState !== WebSocket.OPEN) throw Error('Connection closed');
    if(isSession&&(sessions.get(data.room)!==session||session.expiresAt<=Date.now()))throw Error('This rehearsal invitation has expired or ended');
