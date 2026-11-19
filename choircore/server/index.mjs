@@ -139,6 +139,10 @@ async function getRoom(name) {
  pendingRooms.set(name, opening);
  return opening;
 }
+const reactions=new Set(['👍','👏','❤️','🎵','🙋','✅','⏳','🔇']);
+function sendRecordingState(room,reason=''){
+ for(const p of room.peers)notify(p.ws,'recordingState',{active:!!room.recorder,by:room.recorder?.name||'',own:room.recorder===p,reason,revision:room.revision||0});
+}
 function closePeer(peer){
  if(!peer.room)return;
  const r=peer.room;
@@ -146,6 +150,9 @@ function closePeer(peer){
  for(const t of peer.transports.values())t.close();
  peer.transports.clear();peer.producers.clear();peer.consumers.clear();
  r.peers.delete(peer);
+ r.revision=(r.revision||0)+1;
+ if(r.recorder)r.recorder=null;
+ sendRecordingState(r,'Participants changed; confirm consent again before recording');
  if(r.peers.size===0){r.router.close();if(rooms.get(peer.roomName)===r)rooms.delete(peer.roomName);}
  peer.room=null;peer.roomName=null;
 }
@@ -251,6 +258,9 @@ wss.on('connection',ws=>{
    if(isSession&&(sessions.get(data.room)!==session||session.expiresAt<=Date.now()))throw Error('This rehearsal invitation has expired or ended');
    if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
    peer.roomName=data.room;peer.name=name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
+   selectedRoom.revision=(selectedRoom.revision||0)+1;
+   if(selectedRoom.recorder)selectedRoom.recorder=null;
+   sendRecordingState(selectedRoom,'Participants changed; confirm consent again before recording');
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
    } finally { joining = false; }
   }
@@ -279,6 +289,24 @@ wss.on('connection',ws=>{
    reply(ws,id,{id:c.id,producerId:c.producerId,kind:c.kind,rtpParameters:c.rtpParameters});return;
   }
   if(action==='resumeConsumer'){const c=peer.consumers.get(data.consumerId);if(!c)throw Error('Unknown consumer');await c.resume();reply(ws,id,{ok:true});return;}
+  if(action==='reaction'){
+   if(!reactions.has(data.emoji))throw Error('Choose a supported reaction');
+   if(Date.now()-(peer.lastReaction||0)<800)throw Error('Please wait before sending another reaction');
+   peer.lastReaction=Date.now();
+   for(const p of peer.room.peers)notify(p.ws,'reaction',{emoji:data.emoji,from:peer.name,role:peer.role});
+   reply(ws,id,{ok:true});return;
+  }
+  if(action==='startRecording'||action==='stopRecording'){
+   if(!['conductor','engineer'].includes(peer.role))throw Error('Only the conductor or sound engineer may record');
+   const room=peer.room;
+   if(action==='startRecording'){
+    if(data.consentConfirmed!==true||data.revision!==(room.revision||0))throw Error('Confirm consent for the current participants before recording');
+    if(room.recorder&&room.recorder!==peer)throw Error('Another authorized participant is recording');
+    room.recorder=peer;sendRecordingState(room);reply(ws,id,{ok:true});return;
+   }
+   if(room.recorder===peer){room.recorder=null;sendRecordingState(room,'Recording stopped');}
+   reply(ws,id,{ok:true});return;
+  }
   if(action==='cue'){if(peer.role!=='conductor')throw Error('Conductor only');const message=String(data.message||'').slice(0,120);for(const p of peer.room.peers)notify(p.ws,'cue',{message,from:peer.name});reply(ws,id,{ok:true});return;}
   if(action==='leave'){closePeer(peer);reply(ws,id,{ok:true});return;}
   throw Error('Unknown action');

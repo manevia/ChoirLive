@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ChoirCoreClient } from '../../../choircore/sdk/index.mjs';
 import './ChoirRoom.css';
 import type {Invitation} from './sessionInvitations';
+import MicrophoneTest from './MicrophoneTest';
+import RehearsalReactions from './RehearsalReactions';
+import RehearsalRecorder,{RecordingNotice} from './RehearsalRecorder';
 
 type Remote = {producerId:string;name:string;section:string};
 const sections=['Soprano','Alto','Tenor','Bass','Other'];
@@ -14,6 +17,7 @@ export default function ChoirCoreRoom({invitation}:{invitation?:Invitation}={}){
  const [section,setSection]=useState('Soprano');
  const [status,setStatus]=useState('Disconnected');
  const [joined,setJoined]=useState(false);
+ const [showCheck,setShowCheck]=useState(false);
  const [connecting,setConnecting]=useState(false);
  const [muted,setMuted]=useState(false);
  const [cue,setCue]=useState('');
@@ -44,6 +48,7 @@ export default function ChoirCoreRoom({invitation}:{invitation?:Invitation}={}){
  const join=async()=>{
   if(!name.trim()||!room.trim()||!secret){setStatus('Enter name, room and access code');return;}
   if(connecting||joined)return;
+  setShowCheck(false);
   const id=++attempt.current;
   setConnecting(true);setStatus('Connecting to ChoirCore…');
   const c=new ChoirCoreClient(import.meta.env.VITE_CHOIRCORE_URL||'ws://localhost:8090');
@@ -102,16 +107,29 @@ export default function ChoirCoreRoom({invitation}:{invitation?:Invitation}={}){
   return()=>{active=false;window.clearInterval(timer);};
  },[joined]);
 
+ const makeMix=async()=>{
+  if(role!=='conductor'||!joined||!mic.current)throw Error('Conductor recording requires a connected microphone');
+  const ctx=new AudioContext();
+  try{
+   await ctx.resume();
+   const dst=ctx.createMediaStreamDestination();
+   const tracks=[...mic.current.getAudioTracks(),...Array.from(audio.current.values()).flatMap(element=>element.srcObject instanceof MediaStream?element.srcObject.getAudioTracks():[])];
+   const amp=ctx.createGain();amp.gain.value=1/Math.sqrt(Math.max(1,tracks.length));amp.connect(dst);
+   for(const track of tracks)ctx.createMediaStreamSource(new MediaStream([track])).connect(amp);
+   return {stream:dst.stream,release:()=>{dst.stream.getTracks().forEach(t=>t.stop());if(ctx.state!=='closed')void ctx.close().catch(()=>{});}};
+  }catch(e){if(ctx.state!=='closed')void ctx.close().catch(()=>{});throw e;}
+ };
  return <section className="choir-app" id="choircore-room"><div className="choir-shell">
-  <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
+  <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>{role==='conductor'?'Conductor rehearsal room':'Singer rehearsal room'}</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
   {!joined?<div className="choir-form">
    <label>Your name<input maxLength={64} autoComplete="name" value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
    <label>Room<input maxLength={64} value={room} disabled={connecting||!!invitation} onChange={e=>setRoom(e.target.value)}/></label>
    {invitation?<p className="choir-hint">Session invitation: authorization included in your link.</p>:<label>Access code<input type="password" value={secret} disabled={connecting} onChange={e=>setSecret(e.target.value)}/></label>}
-   <label>Role<select value={role} disabled={connecting||!!invitation} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
+   {invitation?<p className="choir-hint">Role: {role==='conductor'?'Conductor':'Singer'}</p>:<label>Role<select value={role} disabled={connecting} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>}
    <label>Section<select value={section} disabled={connecting} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label>
    <div className="choir-actions"><button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Join / Rejoin room'}</button>{connecting&&<button onClick={leave}>Cancel connection</button>}</div>
-   <p className="choir-hint">Joining enables your microphone. First <a href="#microphone-test" className="underline">check your microphone and record a test</a>. If a network disconnect occurs, use Rejoin room.</p>
+   <button disabled={connecting} onClick={()=>setShowCheck(x=>!x)}>{showCheck?'Close microphone check':'Check microphone levels'}</button>
+   <p className="choir-hint">Joining enables your microphone. You can check microphone levels before joining. If a network disconnect occurs, use Rejoin room.</p>
   </div>:<div className="choir-panel">
    <h3>Connected singers ({remotes.length})</h3>
    {remotes.map(participant=><p key={participant.producerId}>{participant.name} — {participant.section}</p>)}
@@ -120,9 +138,12 @@ export default function ChoirCoreRoom({invitation}:{invitation?:Invitation}={}){
    <button onClick={leave}>Leave room</button></div>
    {role==='conductor'&&<div><label>Conductor cue<input value={cue} maxLength={120} onChange={e=>setCue(e.target.value)}/></label><button disabled={!cue.trim()} onClick={()=>void client.current?.cue(cue).catch(error=>setStatus(String(error)))}>Broadcast cue</button></div>}
    {lastCue&&<p role="status">Conductor: {lastCue}</p>}
+   {client.current&&<RehearsalReactions client={client.current}/>}
+   {client.current&&(role==='conductor'?<RehearsalRecorder client={client.current} room={room} makeMix={makeMix}/>:<RecordingNotice client={client.current}/>)}
    <p className="choir-hint" role="status">{network}</p>
    <p className="choir-hint">RTT and jitter are network indicators, not guaranteed choir synchronization or end-to-end audio latency.</p>
   </div>}
+  {!joined&&!connecting&&showCheck&&<MicrophoneTest/>}
   <p role="status" className="choir-status">{status}</p>
  </div></section>;
 }

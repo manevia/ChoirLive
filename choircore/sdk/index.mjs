@@ -14,7 +14,7 @@ export class ChoirCoreClient {
   this.queuedProducers = new Map();
   this.closed = false;
  }
- on(event, cb) { this.listeners.set(event, cb); return () => this.listeners.delete(event); }
+ on(event, cb) { this.listeners.set(event, cb); if(event==='recordingState'&&this.lastRecordingState)cb(this.lastRecordingState);return () => this.listeners.delete(event); }
  emit(event, data) { try { this.listeners.get(event)?.(data); } catch (error) { if (event !== 'error') this.listeners.get('error')?.(error); } }
  async connect({room, name, secret, role = 'singer', section = 'Other'}) {
   if (this.ws) throw new Error('Client already connected');
@@ -61,6 +61,7 @@ export class ChoirCoreClient {
       this.queuedProducers.set(m.data.producerId, m.data);
       if (this.recvTransport) void this.drainSubscriptions();
      } else {
+      if(m.event==='recordingState')this.lastRecordingState=m.data;
       this.emit(m.event, m.data);
      }
     } catch (error) { this.emit('error', error); }
@@ -125,6 +126,9 @@ export class ChoirCoreClient {
   }
   return {roundTripMs, jitterMs, packetsLost, packetsReceived};
  }
+ async react(emoji) { return this.call('reaction',{emoji}); }
+ async startRecording(revision) { return this.call('startRecording',{consentConfirmed:true,revision}); }
+ async stopRecording() { return this.call('stopRecording'); }
  async cue(message) { return this.call('cue', {message}); }
  async publish(track, section = 'Other') {
   if (!this.sendTransport) throw new Error('Not ready to publish audio');

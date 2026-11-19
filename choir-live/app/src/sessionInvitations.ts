@@ -10,6 +10,7 @@ export function readInvitation():Invitation|null{
 }
 export function invitationLink(session:Session,role:InvitationRole){
  const url=new URL(window.location.pathname,window.location.origin);
+ url.searchParams.set('view',role);
  url.hash=new URLSearchParams({room:session.room,role,invite:session.invitations[role]}).toString();
  return url.href;
 }

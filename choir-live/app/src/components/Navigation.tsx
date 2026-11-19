@@ -16,8 +16,8 @@ const Navigation = () => {
   }, [])
 
   const navLinks = [
-    { label: 'Create rehearsal', href: '#sessions' },
-    { label: 'Audio check', href: '#microphone-test' },
+    { label: 'Create rehearsal', href: '?view=workspace' },
+    { label: 'Audio check', href: '?view=audio' },
     { label: 'Architecture', href: '#architecture' },
     { label: 'Features', href: '#features' },
     { label: 'Specs', href: '#specs' },
@@ -25,6 +25,7 @@ const Navigation = () => {
   ]
 
   const scrollToSection = (href: string) => {
+    if(href.startsWith('?')){window.location.assign(href);return}
     const element = document.querySelector(href)
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' })
@@ -76,7 +77,7 @@ const Navigation = () => {
           <div className="hidden md:block">
             <Button 
               className="bg-sky-400 hover:bg-sky-500 text-slate-900 font-medium"
-              onClick={() => scrollToSection('#choircore-room')}
+              onClick={() => scrollToSection('?view=workspace')}
             >
               Start Rehearsal
             </Button>
@@ -106,7 +107,7 @@ const Navigation = () => {
               ))}
               <Button 
                 className="mt-2 bg-sky-400 hover:bg-sky-500 text-slate-900 font-medium"
-                onClick={() => scrollToSection('#choircore-room')}
+                onClick={() => scrollToSection('?view=workspace')}
               >
                 Start Rehearsal
               </Button>

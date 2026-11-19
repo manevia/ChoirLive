@@ -79,6 +79,22 @@ try{
  }
  if(!one||!two||!desk||one.packetsReceived<30||two.packetsReceived<30||desk.packetsReceived<60)
   throw Error('Bidirectional RTP under threshold: '+JSON.stringify({one,two,desk}));
+ // UI route checks use only disposable, syntactically valid fixture invitations.
+ const ui=await browser.newPage();
+ const base='http://127.0.0.1:'+sitePort;
+ for(const [role,heading] of [['singer','Singer rehearsal room'],['conductor','Conductor rehearsal room'],['engineer','Native ChoirCore Sound Desk']]){
+  const fragment=new URLSearchParams({room:'CL-SESSION-'+'a'.repeat(24),role,invite:'b'.repeat(43)});
+  await ui.goto(base+'/?view='+role+'#'+fragment);
+  await ui.getByRole('heading',{name:heading,exact:true}).waitFor({timeout:15000});
+  if(await ui.getByRole('heading',{name:'Create or sign into your choir workspace'}).count())throw Error('Workspace leaked onto '+role+' page');
+  if(await ui.getByRole('heading',{name:'Microphone level check'}).count())throw Error('Unexpected audio check panel');
+  if(await ui.getByRole('button',{name:'Start recording',exact:true}).count())throw Error('Recording control visible before role was authenticated');
+ }
+ await ui.goto(base+'/?view=audio');
+ await ui.getByRole('heading',{name:'Microphone level check',exact:true}).waitFor({timeout:15000});
+ if(await ui.getByRole('button',{name:'Start recording',exact:true}).count())throw Error('Public audio check can record');
+ await ui.close();
+ console.log('ROLE PAGE ISOLATION PASS');
  console.log('BIDIRECTIONAL AUDIO PASS: singer A=',one.packetsReceived,'singer B=',two.packetsReceived,'sound engineer=',desk.packetsReceived);
  for(const p of pages)await p.evaluate(()=>window.choirMediaTest.leave());
 }catch(error){console.error('BROWSER AUDIO FAILED:',error,logs);process.exitCode=1;}

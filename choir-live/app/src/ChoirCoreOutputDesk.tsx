@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChoirCoreClient } from '../../../choircore/sdk/index.mjs';
 import './ChoirRoom.css';
 import type {Invitation} from './sessionInvitations';
+import RehearsalRecorder from './RehearsalRecorder';
+import RehearsalReactions from './RehearsalReactions';
 
 const SECTION_NAMES = ['Soprano','Alto','Tenor','Bass','Other'] as const;
 type Section = typeof SECTION_NAMES[number];
@@ -22,9 +24,6 @@ export default function ChoirCoreOutputDesk({invitation}:{invitation?:Invitation
  const [master,setMaster] = useState(75);
  const [devices,setDevices] = useState<OutputDevice[]>([]);
  const [selectedDevice,setSelectedDevice] = useState('');
- const [recording,setRecording] = useState(false);
- const [recordedSeconds,setRecordedSeconds] = useState(0);
- const [consentConfirmed,setConsentConfirmed] = useState(false);
  const client = useRef<ChoirCoreClient|null>(null);
  const context = useRef<AudioContext|null>(null);
  const destination = useRef<MediaStreamAudioDestinationNode|null>(null);
@@ -33,9 +32,6 @@ export default function ChoirCoreOutputDesk({invitation}:{invitation?:Invitation
  const sources = useRef<Map<string,StreamNode>>(new Map());
  const main = useRef<GainNode|null>(null);
  const limiter = useRef<DynamicsCompressorNode|null>(null);
- const recorder = useRef<MediaRecorder|null>(null);
- const recordingStarted = useRef<number|null>(null);
-
  const refreshCounts = () => {
   const next: Record<Section,number> = {Soprano:0,Alto:0,Tenor:0,Bass:0,Other:0};
   sources.current.forEach(item => next[item.section]++);
@@ -49,52 +45,14 @@ export default function ChoirCoreOutputDesk({invitation}:{invitation?:Invitation
   sources.current.delete(producerId);
   refreshCounts();
  };
- const finishRecording = () => {
-  const current=recorder.current;
-  if(current?.state==='recording')current.stop();
-  setRecording(false);
-  recordingStarted.current=null;
- };
- const startRecording = () => {
-  if(!consentConfirmed){setStatus('Confirm participant recording consent before starting');return;}
-  if(!destination.current || typeof MediaRecorder==='undefined'){setStatus('Browser recording is unavailable');return;}
-  if(recorder.current?.state==='recording')return;
-  const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(type=>MediaRecorder.isTypeSupported(type));
-  if(!mime){setStatus('This browser has no supported audio recording format');return;}
-  const chunks:BlobPart[]=[];
-  try{
-   const mediaRecorder=new MediaRecorder(destination.current.stream,{mimeType:mime,audioBitsPerSecond:128000});
-   recorder.current=mediaRecorder;
-   mediaRecorder.ondataavailable=event=>{if(event.data.size>0)chunks.push(event.data);};
-   mediaRecorder.onerror=()=>setStatus('Recording error: check browser audio permissions');
-   mediaRecorder.onstop=()=>{
-    const blob=new Blob(chunks,{type:mediaRecorder.mimeType});
-    if(blob.size>0){
-     const url=URL.createObjectURL(blob);
-     const anchor=document.createElement('a');
-     const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-     const safeRoom=room.replace(/[^a-zA-Z0-9_-]/g,'-');
-     anchor.href=url;anchor.download=`choircore-${safeRoom}-${stamp}.${mime.includes('mp4')?'m4a':'webm'}`;
-     document.body.appendChild(anchor);anchor.click();anchor.remove();
-     window.setTimeout(()=>URL.revokeObjectURL(url),30000);
-     setStatus('Recording finished. Check your browser downloads.');
-    }else setStatus('No audio data was captured');
-    if(recorder.current===mediaRecorder)recorder.current=null;
-   };
-   mediaRecorder.start(1000);recordingStarted.current=Date.now();setRecordedSeconds(0);setRecording(true);
-   setStatus('Recording the browser SATB master mix locally');
-  }catch(error){setStatus('Could not start recording: '+String(error));}
- };
  const stop = (reason='Disconnected') => {
-  finishRecording();
   client.current?.close();client.current=null;
   for(const id of [...sources.current.keys()])removeSource(id);
   if(output.current){output.current.pause();output.current.srcObject=null;}
   void context.current?.close();context.current=null;
   destination.current=null;main.current=null;limiter.current=null;buses.current.clear();
-  setConnected(false);setConnecting(false);joining.current=false;setConsentConfirmed(false);setStatus(reason);
+  setConnected(false);setConnecting(false);joining.current=false;setStatus(reason);
  };
- useEffect(()=>{if(!recording)return;const interval=window.setInterval(()=>{if(recordingStarted.current!==null)setRecordedSeconds(Math.floor((Date.now()-recordingStarted.current)/1000))},1000);return()=>window.clearInterval(interval)},[recording]);
  useEffect(()=>()=>{stop();},[]);
 
  const refreshDevices = async () => {
@@ -170,12 +128,11 @@ export default function ChoirCoreOutputDesk({invitation}:{invitation?:Invitation
     <p className="choir-hint">Only a sound-engineer invitation or the legacy engineering code grants desk access. A server-side master mixer remains pending.</p>
    </div>:<div>
     <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={()=>stop()}>Leave room</button></div>
-    <div className="choir-panel">
-     <h3>Local rehearsal recording</h3>
-     <label><input type="checkbox" checked={consentConfirmed} onChange={event=>setConsentConfirmed(event.target.checked)} disabled={recording}/> I confirm all participants have been informed and have agreed to this recording.</label>
-     <div className="choir-actions"><button onClick={recording?finishRecording:startRecording} disabled={!recording&&!consentConfirmed}>{recording?'Stop and save recording':'Start recording'}</button><span role="status">{recording?`Recording: ${Math.floor(recordedSeconds/60)}m ${String(recordedSeconds%60).padStart(2,'0')}s`:'Not recording'}</span></div>
-     <p className="choir-hint">Saves the received and mixed audio to this browser when recording stops. Keep this page open; there is no cloud backup or server-side recording yet. Individual singers' local microphones are not included unless received as remote tracks.</p>
-    </div>
+    {client.current&&<RehearsalReactions client={client.current}/>}
+    {client.current&&<RehearsalRecorder client={client.current} room={room} makeMix={async()=>{
+     if(!destination.current)throw Error('Sound Desk audio output not ready');
+     return {stream:destination.current.stream,release:()=>{}};
+    }}/>}
     <div className="choir-columns">
      <div className="choir-panel"><h3>SATB section mixer</h3>
       {SECTION_NAMES.map(section=><div key={section} className="choir-person"><span>{section}<small>{counts[section]} connected audio tracks</small></span><label>Level {levels[section]}%<input type="range" min="0" max="150" value={levels[section]} onChange={e=>setLevel(section,Number(e.target.value))}/></label></div>)}
