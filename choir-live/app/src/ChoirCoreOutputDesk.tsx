@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChoirCoreClient } from '../../../choircore/sdk/index.mjs';
 import './ChoirRoom.css';
+import type {Invitation} from './sessionInvitations';
 
 const SECTION_NAMES = ['Soprano','Alto','Tenor','Bass','Other'] as const;
 type Section = typeof SECTION_NAMES[number];
@@ -8,10 +9,10 @@ type StreamNode = { source: MediaStreamAudioSourceNode; gain: GainNode; section:
 type OutputDevice = { deviceId: string; label: string };
 const safeSection = (value: string): Section => SECTION_NAMES.includes(value as Section) ? value as Section : 'Other';
 
-export default function ChoirCoreOutputDesk(){
- const [room,setRoom] = useState('CHOIR-101');
+export default function ChoirCoreOutputDesk({invitation}:{invitation?:Invitation}={}){
+ const [room,setRoom] = useState(invitation?.room||'CHOIR-101');
  const [name,setName] = useState('Sound Engineer');
- const [secret,setSecret] = useState('');
+ const [secret,setSecret] = useState(invitation?.token||'');
  const [status,setStatus] = useState('Disconnected');
  const [connected,setConnected] = useState(false);
  const [connecting,setConnecting] = useState(false);
@@ -163,10 +164,10 @@ export default function ChoirCoreOutputDesk(){
    <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT OUTPUT</span><h2>Native ChoirCore Sound Desk</h2><p>Receive-only SATB mix · USB audio output · no LiveKit connection</p></div><span className="choir-pill">{connected?'● CONNECTED':'○ OFFLINE'}</span></div>
    {!connected?<div className="choir-form">
     <label>Engineer display name<input maxLength={64} disabled={connecting} value={name} onChange={e=>setName(e.target.value)}/></label>
-    <label>Choir room<input maxLength={64} disabled={connecting} value={room} onChange={e=>setRoom(e.target.value)}/></label>
-    <label>Room access code<input type="password" disabled={connecting} value={secret} onChange={e=>setSecret(e.target.value)} autoComplete="off"/></label>
+    <label>Choir room<input maxLength={64} disabled={connecting||!!invitation} value={room} onChange={e=>setRoom(e.target.value)}/></label>
+    {invitation?<p className="choir-hint">Session invitation: authorization included in your link.</p>:<label>Room access code<input type="password" disabled={connecting} value={secret} onChange={e=>setSecret(e.target.value)} autoComplete="off"/></label>}
     <button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Connect output desk'}</button>
-    <p className="choir-hint">This desk requires the dedicated sound-engineer access code. A server-side master mixer remains pending.</p>
+    <p className="choir-hint">Only a sound-engineer invitation or the legacy engineering code grants desk access. A server-side master mixer remains pending.</p>
    </div>:<div>
     <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={()=>stop()}>Leave room</button></div>
     <div className="choir-panel">

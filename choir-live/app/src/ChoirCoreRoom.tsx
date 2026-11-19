@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChoirCoreClient } from '../../../choircore/sdk/index.mjs';
 import './ChoirRoom.css';
+import type {Invitation} from './sessionInvitations';
 
 type Remote = {producerId:string;name:string;section:string};
 const sections=['Soprano','Alto','Tenor','Bass','Other'];
 
-export default function ChoirCoreRoom(){
+export default function ChoirCoreRoom({invitation}:{invitation?:Invitation}={}){
  const [name,setName]=useState('');
- const [room,setRoom]=useState('CHOIR-101');
- const [secret,setSecret]=useState('');
- const [role,setRole]=useState('singer');
+ const [room,setRoom]=useState(invitation?.room||'CHOIR-101');
+ const [secret,setSecret]=useState(invitation?.token||'');
+ const [role,setRole]=useState<string>(invitation?.role||'singer');
  const [section,setSection]=useState('Soprano');
  const [status,setStatus]=useState('Disconnected');
  const [joined,setJoined]=useState(false);
@@ -105,9 +106,9 @@ export default function ChoirCoreRoom(){
   <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
   {!joined?<div className="choir-form">
    <label>Your name<input maxLength={64} autoComplete="name" value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
-   <label>Room<input maxLength={64} value={room} disabled={connecting} onChange={e=>setRoom(e.target.value)}/></label>
-   <label>Access code<input type="password" value={secret} disabled={connecting} onChange={e=>setSecret(e.target.value)}/></label>
-   <label>Role<select value={role} disabled={connecting} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
+   <label>Room<input maxLength={64} value={room} disabled={connecting||!!invitation} onChange={e=>setRoom(e.target.value)}/></label>
+   {invitation?<p className="choir-hint">Session invitation: authorization included in your link.</p>:<label>Access code<input type="password" value={secret} disabled={connecting} onChange={e=>setSecret(e.target.value)}/></label>}
+   <label>Role<select value={role} disabled={connecting||!!invitation} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
    <label>Section<select value={section} disabled={connecting} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label>
    <div className="choir-actions"><button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Join / Rejoin room'}</button>{connecting&&<button onClick={leave}>Cancel connection</button>}</div>
    <p className="choir-hint">Joining enables your microphone. First <a href="#microphone-test" className="underline">check your microphone and record a test</a>. If a network disconnect occurs, use Rejoin room.</p>

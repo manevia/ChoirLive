@@ -13,7 +13,7 @@ const child = spawn(process.execPath, ['index.mjs'], {
  env: {...process.env, PORT:String(port), ANNOUNCED_IP:'127.0.0.1',
   CHOIRCORE_SINGER_CODE:codeSinger, CHOIRCORE_CONDUCTOR_CODE:codeConductor,
   CHOIRCORE_ENGINEER_CODE:codeEngineer,
-  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3', MAX_AUTH_FAILURES:'3'},
+  CHOIRCORE_ALLOWED_ORIGINS:origin, MAX_PEERS_PER_ROOM:'2', MAX_ROOMS:'3', MAX_AUTH_FAILURES:'4'},
  stdio:['ignore','pipe','pipe']
 });
 let logs='';
@@ -60,6 +60,26 @@ try {
  assert.ok(healthy,'ChoirCore health endpoint failed; '+logs);
  assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status,404);
  await assert.rejects(connect('https://unauthorized.invalid'), /403|Unexpected server response/);
+ const host=await connect(origin);
+ const created=await request(host,100,'createSession',{hostCode:codeConductor,title:'Choir practice',minutes:60});
+ assert.ok(created.data?.room && created.data?.expiresAt>Date.now());
+ assert.ok(created.data.invitations.singer!==created.data.invitations.engineer);
+ const invitee=await connect(origin);
+ const invited=await request(invitee,101,'join',{room:created.data.room,name:'Invited Singer',secret:created.data.invitations.singer,role:'singer'});
+ assert.ok(invited.data?.routerRtpCapabilities);
+ const roleCheck=await connect(origin);
+ const roleRestricted=await request(roleCheck,105,'join',{room:created.data.room,name:'Invited Singer',secret:created.data.invitations.singer,role:'engineer'});
+ assert.match(roleRestricted.error,/Unauthorized/);
+ roleCheck.terminate();
+ const deskInvite=await connect(origin);
+ const deskJoin=await request(deskInvite,102,'join',{room:created.data.room,name:'Sound Engineer',secret:created.data.invitations.engineer,role:'engineer'});
+ assert.ok(deskJoin.data?.routerRtpCapabilities);
+ const ended=await request(host,103,'endSession',{room:created.data.room,managerToken:created.data.managerToken});
+ assert.equal(ended.data.ok,true);
+ const afterEnd=await connect(origin);
+ const expired=await request(afterEnd,104,'join',{room:created.data.room,name:'Invited Singer',secret:created.data.invitations.singer,role:'singer'});
+ assert.match(expired.error,/expired or ended/);
+ for(const ws of [host,invitee,deskInvite,afterEnd])ws.terminate();
  const a=await connect(origin);
  const bad=await request(a,1,'join',{room:'TEST',name:'SingerA',secret:'wrong'});
  assert.match(bad.error,/Unauthorized/);

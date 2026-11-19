@@ -16,6 +16,7 @@ const Navigation = () => {
   }, [])
 
   const navLinks = [
+    { label: 'Create rehearsal', href: '#sessions' },
     { label: 'Audio check', href: '#microphone-test' },
     { label: 'Architecture', href: '#architecture' },
     { label: 'Features', href: '#features' },

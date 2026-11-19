@@ -1,3 +1,5 @@
+import SessionManager from './SessionManager'
+import {readInvitation} from './sessionInvitations'
 import MicrophoneTest from './MicrophoneTest'
 import ChoirCoreRoom from './ChoirCoreRoom'
 import ChoirCoreOutputDesk from './ChoirCoreOutputDesk'
@@ -13,6 +15,8 @@ import Navigation from './components/Navigation'
 import ScrollProgress from './components/ScrollProgress'
 
 function App() {
+  const [invitation] = useState(readInvitation)
+  useEffect(()=>{if(invitation)window.history.replaceState(null,'',window.location.pathname+window.location.search)},[invitation])
   const [isLoaded, setIsLoaded] = useState(false)
   const mainRef = useRef<HTMLDivElement>(null)
 
@@ -33,7 +37,7 @@ function App() {
       }`}
     >
       <ScrollProgress />
-      <Navigation />
+      {!invitation&&<Navigation />}
       
       <main className="relative">
         {/* Background Elements */}
@@ -58,10 +62,16 @@ function App() {
 
         {/* Content Sections */}
         <div className="relative z-10">
+          {invitation ? <>
+            <MicrophoneTest />
+            {invitation.role==='engineer'?<ChoirCoreOutputDesk invitation={invitation}/>:<ChoirCoreRoom invitation={invitation}/>}
+          </> : <>
           <HeroSection />
+          <SessionManager />
           <MicrophoneTest />
           <ChoirCoreRoom />
           <ChoirCoreOutputDesk />
+          </>}
           <ArchitectureSection />
           <FeaturesSection />
           <TechSpecsSection />

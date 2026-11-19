@@ -13,6 +13,7 @@ if (!announcedAddress) throw new Error('Set ANNOUNCED_IP to the public IP or rea
 const worker = await mediasoup.createWorker({rtcMinPort:40000,rtcMaxPort:40100,logLevel:'warn'});
 worker.on('died',()=>process.exit(1));
 const rooms = new Map();
+const sessions = new Map();
 const pendingRooms = new Map();
 // If a client closes before an asynchronous room join completes, allow other
 // concurrent admissions to finish before cleaning the orphaned empty router.
@@ -100,6 +101,25 @@ function displayName(value) {
  const name=value.normalize('NFC').trim();
  return name.length<=64 && /[\p{L}\p{N}]/u.test(name) && /^[\p{L}\p{M}\p{N} .,'’_\-]+$/u.test(name) ? name : null;
 }
+const SESSION_PREFIX='CL-SESSION-';
+const sessionRoles=['singer','conductor','engineer'];
+const token=()=>crypto.randomBytes(32).toString('base64url');
+const digest=value=>crypto.createHash('sha256').update(value).digest();
+function matches(value,expected){
+ return typeof value==='string' && value.length<=256 && crypto.timingSafeEqual(digest(value),expected);
+}
+function endSession(room) {
+ sessions.delete(room);
+ const active=rooms.get(room);
+ if(active)for(const participant of [...active.peers]){
+  closePeer(participant);
+  participant.ws.close(1000,'Rehearsal ended');
+ }
+}
+const sessionSweep=setInterval(()=>{
+ for(const [room,session] of sessions)if(session.expiresAt<=Date.now())endSession(room);
+},1000);
+sessionSweep.unref();
 async function getRoom(name) {
  const existing = rooms.get(name);
  if (existing) return existing;
@@ -137,6 +157,28 @@ wss.on('connection',ws=>{
   if (now - windowStart >= 10000) { windowStart = now; messageCount = 0; }
   if (++messageCount > MAX_MESSAGES_PER_10S) { ws.close(1008, 'Rate limit exceeded'); return; }
   let msg;try{msg=JSON.parse(raw.toString());}catch{return;}const {id,action,data={}}=msg;try{
+  if(action==='createSession'){
+   if(peer.room || joining)throw Error('Leave the rehearsal before creating another session');
+   if(authBlocked(remoteAddress))throw Error('Too many failed authorization attempts. Try again later');
+   if(!matches(data.hostCode,digest(conductorCode))){
+    failedAuth(remoteAddress);throw Error('Host authorization failed');
+   }
+   const title=displayName(data.title);
+   const minutes=data.minutes;
+   if(!title||!Number.isInteger(minutes)||minutes<15||minutes>480)throw Error('Enter a session title and duration of 15–480 minutes');
+   if(sessions.size>=MAX_ROOMS)throw Error('Session limit reached');
+   const room=SESSION_PREFIX+crypto.randomBytes(12).toString('hex');
+   const invitations=Object.fromEntries(sessionRoles.map(role=>[role,token()]));
+   const managerToken=token();
+   const expiresAt=Date.now()+minutes*60000;
+   sessions.set(room,{title,expiresAt,manager:digest(managerToken),roles:Object.fromEntries(sessionRoles.map(role=>[role,digest(invitations[role])]))});
+   reply(ws,id,{room,title,expiresAt,invitations,managerToken});return;
+  }
+  if(action==='endSession'){
+   const session=sessions.get(data.room);
+   if(!session||!matches(data.managerToken,session.manager))throw Error('Session management authorization failed');
+   endSession(data.room);reply(ws,id,{ok:true});return;
+  }
   if(action==='join'){
    if(peer.room || joining)throw Error('Already joining or joined');
    joining = true;
@@ -146,13 +188,17 @@ wss.on('connection',ws=>{
    const name=displayName(data.name);
    if(!name)throw Error('Invalid display name: use 1–64 letters, numbers, spaces or common name punctuation');
    const role=['singer','conductor','engineer'].includes(data.role)?data.role:'singer';
-   const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
-   if(a.length!==b.length||!crypto.timingSafeEqual(a,b)) {
+   const isSession=data.room.startsWith(SESSION_PREFIX);
+   const session=isSession?sessions.get(data.room):null;
+   if(isSession&&(!session||session.expiresAt<=Date.now()))throw Error('This rehearsal invitation has expired or ended');
+   const expected=isSession?session.roles[role]:digest(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
+   if(!matches(data.secret,expected)) {
     failedAuth(remoteAddress);
     throw Error('Unauthorized');
    }
    const selectedRoom = await getRoom(data.room);
    if (socketClosed || ws.readyState !== WebSocket.OPEN) throw Error('Connection closed');
+   if(isSession&&(sessions.get(data.room)!==session||session.expiresAt<=Date.now()))throw Error('This rehearsal invitation has expired or ended');
    if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
    peer.roomName=data.room;peer.name=name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
