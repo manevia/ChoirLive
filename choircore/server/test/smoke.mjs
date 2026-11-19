@@ -63,7 +63,7 @@ try {
  const a=await connect(origin);
  const bad=await request(a,1,'join',{room:'TEST',name:'SingerA',secret:'wrong'});
  assert.match(bad.error,/Unauthorized/);
- const joined=await request(a,2,'join',{room:'TEST',name:'SingerA',secret:codeSinger,role:'singer',section:'Alto'});
+ const joined=await request(a,2,'join',{room:'TEST',name:'Mogana S. Flomo, Jr.',secret:codeSinger,role:'singer',section:'Alto'});
  assert.ok(joined.data.routerRtpCapabilities);
  const forbidden=await request(a,3,'cue',{message:'STOP'});
  assert.match(forbidden.error,/Conductor only/);
@@ -74,7 +74,7 @@ try {
  const overflow=await request(c,5,'join',{room:'TEST',name:'SingerC',secret:codeSinger});
  assert.match(overflow.error,/capacity/);
  const engineer=await connect(origin);
- const engineerResult=await request(engineer,7,'join',{room:'ENGINEER',name:'Mixer',secret:codeEngineer,role:'engineer'});
+ const engineerResult=await request(engineer,7,'join',{room:'ENGINEER',name:'Sound Engineer',secret:codeEngineer,role:'engineer'});
  assert.ok(engineerResult.data.routerRtpCapabilities);
  const cannotPublish=await request(engineer,8,'produce',{kind:'audio'});
  assert.match(cannotPublish.error,/receive-only/);

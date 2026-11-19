@@ -94,6 +94,12 @@ heartbeat.unref();
 function reply(ws,id,data,error){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({id,...(error?{error:String(error)}:{data})}));}
 function notify(ws,event,data){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({event,data}));}
 function safeId(s){return typeof s==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(s)}
+// Room IDs and human-readable display names have distinct validation rules.
+function displayName(value) {
+ if(typeof value !== 'string') return null;
+ const name=value.normalize('NFC').trim();
+ return name.length<=64 && /[\p{L}\p{N}]/u.test(name) && /^[\p{L}\p{M}\p{N} .,'’_\-]+$/u.test(name) ? name : null;
+}
 async function getRoom(name) {
  const existing = rooms.get(name);
  if (existing) return existing;
@@ -136,7 +142,9 @@ wss.on('connection',ws=>{
    joining = true;
    try {
    if(authBlocked(remoteAddress)) throw Error('Too many failed access-code attempts. Try again later');
-   if(!safeId(data.room)||!safeId(data.name))throw Error('Invalid room or name');
+   if(!safeId(data.room))throw Error('Invalid room ID: use 1–64 letters, numbers, hyphens or underscores');
+   const name=displayName(data.name);
+   if(!name)throw Error('Invalid display name: use 1–64 letters, numbers, spaces or common name punctuation');
    const role=['singer','conductor','engineer'].includes(data.role)?data.role:'singer';
    const a=Buffer.from(String(data.secret||'')),b=Buffer.from(role==='conductor'?conductorCode:role==='engineer'?engineerCode:singerCode);
    if(a.length!==b.length||!crypto.timingSafeEqual(a,b)) {
@@ -146,7 +154,7 @@ wss.on('connection',ws=>{
    const selectedRoom = await getRoom(data.room);
    if (socketClosed || ws.readyState !== WebSocket.OPEN) throw Error('Connection closed');
    if (selectedRoom.peers.size >= MAX_PEERS_PER_ROOM) throw Error('Room at capacity');
-   peer.roomName=data.room;peer.name=data.name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
+   peer.roomName=data.room;peer.name=name;peer.role=role;peer.section=['Soprano','Alto','Tenor','Bass','Other'].includes(data.section)?data.section:'Other';peer.room=selectedRoom;peer.room.peers.add(peer);
    reply(ws,id,{routerRtpCapabilities:peer.room.router.rtpCapabilities,existingProducers:[...peer.room.peers].filter(p=>p!==peer).flatMap(p=>[...p.producers.values()].map(x=>({producerId:x.id,name:p.name,section:p.section}))) });return;
    } finally { joining = false; }
   }

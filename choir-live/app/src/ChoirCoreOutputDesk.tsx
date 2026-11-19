@@ -14,6 +14,8 @@ export default function ChoirCoreOutputDesk(){
  const [secret,setSecret] = useState('');
  const [status,setStatus] = useState('Disconnected');
  const [connected,setConnected] = useState(false);
+ const [connecting,setConnecting] = useState(false);
+ const joining = useRef(false);
  const [counts,setCounts] = useState<Record<Section,number>>({Soprano:0,Alto:0,Tenor:0,Bass:0,Other:0});
  const [levels,setLevels] = useState<Record<Section,number>>({Soprano:100,Alto:100,Tenor:100,Bass:100,Other:100});
  const [master,setMaster] = useState(75);
@@ -89,7 +91,7 @@ export default function ChoirCoreOutputDesk(){
   if(output.current){output.current.pause();output.current.srcObject=null;}
   void context.current?.close();context.current=null;
   destination.current=null;main.current=null;limiter.current=null;buses.current.clear();
-  setConnected(false);setStatus(reason);
+  setConnected(false);setConnecting(false);joining.current=false;setConsentConfirmed(false);setStatus(reason);
  };
  useEffect(()=>{if(!recording)return;const interval=window.setInterval(()=>{if(recordingStarted.current!==null)setRecordedSeconds(Math.floor((Date.now()-recordingStarted.current)/1000))},1000);return()=>window.clearInterval(interval)},[recording]);
  useEffect(()=>()=>{stop();},[]);
@@ -102,6 +104,8 @@ export default function ChoirCoreOutputDesk(){
  };
  const join = async () => {
   if(!name.trim() || !room.trim() || !secret){setStatus('Enter the engineer name, room and room access code');return;}
+  if(joining.current||connected)return;
+  joining.current=true;setConnecting(true);
   let c:ChoirCoreClient|null=null;
   try{
    setStatus('Connecting receiving-only Output Desk…');
@@ -135,8 +139,8 @@ export default function ChoirCoreOutputDesk(){
    // The desk receives media but never publishes its microphone.
    // Engineer authorization uses a distinct receive-only shared code.
    // Individual user identities are required before public launch.
-   await c.connect({room,name,secret,role:'engineer',section:'Other'});
-   setConnected(true);setStatus('Receiving choir audio — no microphone published');
+   await c.connect({room:room.trim(),name:name.trim(),secret,role:'engineer',section:'Other'});
+   setConnected(true);setConnecting(false);joining.current=false;setStatus('Receiving choir audio — no microphone published');
    await refreshDevices();
    void audio.play().catch(()=>setStatus('Click Enable audio output to hear the choir'));
   }catch(error){stop('Output Desk connection failed: '+String(error));}
@@ -158,10 +162,10 @@ export default function ChoirCoreOutputDesk(){
   <div className="choir-shell">
    <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT OUTPUT</span><h2>Native ChoirCore Sound Desk</h2><p>Receive-only SATB mix · USB audio output · no LiveKit connection</p></div><span className="choir-pill">{connected?'● CONNECTED':'○ OFFLINE'}</span></div>
    {!connected?<div className="choir-form">
-    <label>Engineer display name<input value={name} onChange={e=>setName(e.target.value)}/></label>
-    <label>Choir room<input value={room} onChange={e=>setRoom(e.target.value)}/></label>
-    <label>Room access code<input type="password" value={secret} onChange={e=>setSecret(e.target.value)} autoComplete="off"/></label>
-    <button onClick={()=>void join()}>Connect output desk</button>
+    <label>Engineer display name<input maxLength={64} disabled={connecting} value={name} onChange={e=>setName(e.target.value)}/></label>
+    <label>Choir room<input maxLength={64} disabled={connecting} value={room} onChange={e=>setRoom(e.target.value)}/></label>
+    <label>Room access code<input type="password" disabled={connecting} value={secret} onChange={e=>setSecret(e.target.value)} autoComplete="off"/></label>
+    <button disabled={connecting} onClick={()=>void join()}>{connecting?'Connecting…':'Connect output desk'}</button>
     <p className="choir-hint">This desk requires the dedicated sound-engineer access code. A server-side master mixer remains pending.</p>
    </div>:<div>
     <div className="choir-actions"><button onClick={()=>void output.current?.play()}>Enable audio output</button><button onClick={()=>void refreshDevices()}>Refresh audio devices</button><button onClick={()=>stop()}>Leave room</button></div>

@@ -71,11 +71,14 @@ export default function ChoirCoreRoom(){
     disconnect();
     setStatus('Connection lost. Select Rejoin room to reconnect.');
    });
-   await c.connect({room,name,secret,role,section});
+   await c.connect({room:room.trim(),name:name.trim(),secret,role,section});
    if(id!==attempt.current)throw new Error('Join canceled');
+   setStatus('Signaling connected. Requesting microphone permission…');
+   if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone unavailable in this browser');
    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
    if(id!==attempt.current)throw new Error('Join canceled');
    mic.current=stream;
+   setStatus('Microphone ready. Connecting media transport…');
    await c.publish(stream.getAudioTracks()[0],section);
    if(id!==attempt.current)throw new Error('Join canceled');
    setJoined(true);setConnecting(false);setStatus('Connected — wear headphones');
@@ -101,8 +104,8 @@ export default function ChoirCoreRoom(){
  return <section className="choir-app" id="choircore-room"><div className="choir-shell">
   <div className="choir-top"><div><span className="choir-kicker"><img src={`${import.meta.env.BASE_URL}choir-mark.svg`} alt="" className="inline-block w-6 h-6 align-middle mr-2" />CHOIRCORE · INDEPENDENT ENGINE</span><h2>ChoirCore rehearsal room</h2><p>Self-hosted WebRTC · headphones recommended</p></div><span className="choir-pill">{joined?'● CONNECTED':connecting?'◌ CONNECTING':'○ OFFLINE'}</span></div>
   {!joined?<div className="choir-form">
-   <label>Your name<input value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
-   <label>Room<input value={room} disabled={connecting} onChange={e=>setRoom(e.target.value)}/></label>
+   <label>Your name<input maxLength={64} autoComplete="name" value={name} disabled={connecting} onChange={e=>setName(e.target.value)}/></label>
+   <label>Room<input maxLength={64} value={room} disabled={connecting} onChange={e=>setRoom(e.target.value)}/></label>
    <label>Access code<input type="password" value={secret} disabled={connecting} onChange={e=>setSecret(e.target.value)}/></label>
    <label>Role<select value={role} disabled={connecting} onChange={e=>setRole(e.target.value)}><option value="singer">Singer</option><option value="conductor">Conductor</option></select></label>
    <label>Section<select value={section} disabled={connecting} onChange={e=>setSection(e.target.value)}>{sections.map(s=><option key={s}>{s}</option>)}</select></label>

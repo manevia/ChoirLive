@@ -57,9 +57,9 @@ try{
  // Join three browsers before publishing, to test newProducer subscription
  // from both singers and ensure the receive-only desk hears both tracks.
  await Promise.all([
-  singer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SingerOne',secret:codeSinger,publish:false}),
-  receiver.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SingerTwo',secret:codeSinger,publish:false}),
-  engineer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'SoundDesk',secret:codeEngineer,role:'engineer',publish:false})
+  singer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'Mogana S. Flomo, Jr.',secret:codeSinger,publish:false}),
+  receiver.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'Amélie O’Connor',secret:codeSinger,publish:false}),
+  engineer.evaluate(args=>window.choirMediaTest.join(args),{url:wsUrl,room:'BROWSER',name:'Sound Engineer',secret:codeEngineer,role:'engineer',publish:false})
  ]);
  await Promise.all([
   singer.evaluate(()=>window.choirMediaTest.publishMic()),
