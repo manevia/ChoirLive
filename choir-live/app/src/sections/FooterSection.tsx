@@ -63,7 +63,7 @@ const FooterSection = () => {
                 <Music className="w-5 h-5 text-slate-900" />
               </div>
               <span className="font-semibold text-xl text-slate-100">
-                Choir<span className="text-sky-400">Sync</span>
+                Choir<span className="text-sky-400">Live</span>
               </span>
             </a>
 
@@ -135,7 +135,7 @@ const FooterSection = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-slate-500">
-              © {currentYear} ChoirSync. All rights reserved.
+              © {currentYear} ChoirLive. All rights reserved.
             </p>
             <p className="text-sm text-slate-500 flex items-center gap-1">
               Made with <Heart className="w-4 h-4 text-rose-400 fill-rose-400" /> for choirs worldwide

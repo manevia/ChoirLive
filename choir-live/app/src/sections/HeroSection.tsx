@@ -82,7 +82,7 @@ const HeroSection = () => {
           style={{ transitionDelay: '400ms' }}
         >
           <span className="text-slate-100">Choir</span>
-          <span className="text-gradient">Sync</span>
+          <span className="text-gradient">Live</span>
         </h1>
 
         {/* Tagline */}

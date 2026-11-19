@@ -103,7 +103,7 @@ const DataFlowSection = () => {
             From Voice to Sound System
           </h2>
           <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-            A simplified view of how audio flows through the ChoirSync system.
+            A simplified view of how audio flows through the ChoirLive system.
           </p>
         </div>
 

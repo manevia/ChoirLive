@@ -97,7 +97,7 @@ const TechSpecsSection = () => {
   const latencyData = [
     { label: 'Standard Video Call', latency: '150-300ms', width: 100, color: 'bg-red-500/70' },
     { label: 'Music Lesson Apps', latency: '80-150ms', width: 60, color: 'bg-amber-500/70' },
-    { label: 'ChoirSync', latency: '20-40ms', width: 20, color: 'bg-sky-400', isBest: true },
+    { label: 'ChoirLive', latency: '20-40ms', width: 20, color: 'bg-sky-400', isBest: true },
     { label: 'In-Person Rehearsal', latency: '<10ms', width: 8, color: 'bg-emerald-400' },
   ]
 
@@ -140,7 +140,7 @@ const TechSpecsSection = () => {
             The Numbers That Matter
           </h2>
           <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-            See how ChoirSync compares to standard video conferencing and other solutions.
+            See how ChoirLive compares to standard video conferencing and other solutions.
           </p>
         </div>
 
@@ -242,7 +242,7 @@ const TechSpecsSection = () => {
                 <thead>
                   <tr className="border-b border-slate-700">
                     <th className="text-left py-3 text-sm font-medium text-slate-400">Feature</th>
-                    <th className="text-center py-3 text-sm font-medium text-sky-400">ChoirSync</th>
+                    <th className="text-center py-3 text-sm font-medium text-sky-400">ChoirLive</th>
                     <th className="text-center py-3 text-sm font-medium text-slate-500">Zoom</th>
                     <th className="text-center py-3 text-sm font-medium text-slate-500">Teams</th>
                   </tr>

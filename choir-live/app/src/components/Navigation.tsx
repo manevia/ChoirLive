@@ -53,7 +53,7 @@ const Navigation = () => {
               <Music className="w-5 h-5 text-slate-900" />
             </div>
             <span className="font-semibold text-lg text-slate-100">
-              Choir<span className="text-sky-400">Sync</span>
+              Choir<span className="text-sky-400">Live</span>
             </span>
           </a>
 
